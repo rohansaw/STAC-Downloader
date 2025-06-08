@@ -1,9 +1,12 @@
-from enum import Enum
 import os
 import subprocess
+from enum import Enum
+
 import numpy as np
-from rasterio.warp import Resampling, calculate_default_transform, reproject
 import rasterio as rio
+from rasterio.warp import Resampling, calculate_default_transform, reproject
+from tenacity import retry, stop_after_attempt, wait_exponential
+
 
 # Non library specific resampling method enum
 class ResamplingMethod(Enum):
@@ -18,20 +21,45 @@ class ResamplingMethod(Enum):
             raise ValueError(f"Invalid resampling method: {method_str}")
 
 
-def resample_raster(raster, profile: dict, src_bounds, target_resolution: float, resampling_method: ResamplingMethod):
-    src_resolution = profile['resolution']
-    src_crs = profile['crs']
-    src_width = profile['width']
-    src_height = profile['height']
-    src_dtype = profile['dtype']
-    src_transform = profile['transform']
+# Using retry since we are sometimes reading from remote filesystems (e.g. S3) and they can be flaky.
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+)
+def resample_raster(
+    raster_path: str, target_resolution: float, resampling_method: ResamplingMethod
+):
+    with rio.open(raster_path) as src:
+        if src.count > 1:
+            raise ValueError(
+                "The input file has more than one band. Currently only handling single band rasters."
+            )
 
-    rio_resampling_method = Resampling.from_string(resampling_method.value)
+        raster = src.read(1)  # Read the first band
+        src_bounds = src.bounds
+        src_resolution = src.res
+        src_width = src.width
+        src_height = src.height
+        src_crs = src.crs
+        src_dtype = src.dtypes[0]
+        src_transform = src.transform
+        profile = src.profile.copy()
 
+    if resampling_method == ResamplingMethod.NEAREST:
+        rio_resampling_method = Resampling.nearest
+    elif resampling_method == ResamplingMethod.BILINEAR:
+        rio_resampling_method = Resampling.bilinear
+    else:
+        raise ValueError(f"Unsupported resampling method: {resampling_method}")
 
     if src_resolution != (target_resolution, target_resolution):
         dst_transform, dst_width, dst_height = calculate_default_transform(
-            src_crs, src_crs, src_width, src_height, *src_bounds, resolution=target_resolution
+            src_crs,
+            src_crs,
+            src_width,
+            src_height,
+            *src_bounds,
+            resolution=target_resolution,
         )
 
         resampled_raster = np.empty((dst_height, dst_width), dtype=src_dtype)
@@ -54,8 +82,8 @@ def resample_raster(raster, profile: dict, src_bounds, target_resolution: float,
         )
         return resampled_raster, profile
     else:
-       return raster, profile
-    
+        return raster, profile
+
 
 def save_band(raster, profile, output_path, band_name):
     profile.update(
@@ -80,7 +108,13 @@ def save_band(raster, profile, output_path, band_name):
     return output_path
 
 
-def build_bandstacked_vrt(output_file_path: str, band_paths: dict, band_names: list[str], create_gtiff=False, blocksize=256):
+def build_bandstacked_vrt(
+    output_file_path: str,
+    band_paths: dict,
+    band_names: list[str],
+    create_gtiff=False,
+    blocksize=256,
+):
     # Use order of band_names to create the VRT
     band_paths_ordered = [band_paths[band_name] for band_name in band_names]
 
@@ -132,3 +166,27 @@ def build_bandstacked_vrt(output_file_path: str, band_paths: dict, band_names: l
         raise FileNotFoundError(f"Output GeoTIFF file was not created: {output_file_path_gtiff}")
 
     return output_file_path
+
+
+def apply_mask(raster: np.ndarray, mask: np.ndarray, nodata_value):
+    """
+    Apply a mask to the raster data.
+    The mask should be a boolean array where True indicates pixels to keep.
+    """
+    if raster.shape != mask.shape:
+        raise ValueError("Raster and mask must have the same shape.")
+
+    masked_raster = np.where(mask, raster, nodata_value)  # Replace masked pixels with nodataval
+    return masked_raster
+
+
+def is_binary(raster: np.ndarray):
+    """
+    Check if the raster is binary (contains only 0s and 1s).
+    """
+    unique_values = np.unique(raster)
+    return (
+        np.array_equal(unique_values, [0, 1])
+        or np.array_equal(unique_values, [1])
+        or np.array_equal(unique_values, [0])
+    )

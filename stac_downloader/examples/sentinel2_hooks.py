@@ -1,8 +1,12 @@
-from functools import partial
 import os
-import numpy as np
 import xml.etree.ElementTree as ET
+from functools import partial
+from typing import Dict, List
+
+import numpy as np
 import rasterio as rio
+from pystac.item import Item as pyStacItem
+
 
 def get_s2_geometry_data(metadata_xml):
     """
@@ -36,12 +40,12 @@ def get_s2_geometry_data(metadata_xml):
 
     mean_incidence_azimuth_angle_b8a_el = b8a_incidence_angle_el.find("AZIMUTH_ANGLE")
     if mean_incidence_azimuth_angle_b8a_el.attrib["unit"] != "deg":
-        raise Exception(f"mean_incidence_azimuth_angle_b8a must be in degrees.")
+        raise Exception("mean_incidence_azimuth_angle_b8a must be in degrees.")
     mean_incidence_azimuth_angle_b8a = float(mean_incidence_azimuth_angle_b8a_el.text)
 
     mean_incidence_zenith_angle_b8a_el = b8a_incidence_angle_el.find("ZENITH_ANGLE")
     if mean_incidence_zenith_angle_b8a_el.attrib["unit"] != "deg":
-        raise Exception(f"mean_incidence_zenith_angle_b8a must be in degrees.")
+        raise Exception("mean_incidence_zenith_angle_b8a must be in degrees.")
     mean_incidence_zenith_angle_b8a = float(mean_incidence_zenith_angle_b8a_el.text)
 
     return {
@@ -53,7 +57,10 @@ def get_s2_geometry_data(metadata_xml):
 
 
 def compute_cos_angles(
-    zenith_angle, azimuth_angle, mean_incidence_zenith_angle_b8a, mean_incidence_azimuth_angle_b8a
+    zenith_angle,
+    azimuth_angle,
+    mean_incidence_zenith_angle_b8a,
+    mean_incidence_azimuth_angle_b8a,
 ):
     cos_vza = np.uint16(np.cos(np.deg2rad(mean_incidence_zenith_angle_b8a)) * 10000)
     cos_sza = np.uint16(np.cos(np.deg2rad(zenith_angle)) * 10000)
@@ -105,10 +112,18 @@ def create_geometry_bands(item, cos_angles, metadata, output_folder, blocksize=2
 
 
 def add_geometry_bands(
-    item, band_paths, band_names, resolution, mask, metadata_file_paths, output_folder
+    item: pyStacItem,
+    band_paths: Dict[str, str],
+    band_names: List[str],
+    mask: np.ndarray,
+    file_asset_paths: Dict[str, str],
+    resolution: float,
+    output_folder: str,
 ):
-    print("Computing geometry bands")
-    graunle_metadata_file = metadata_file_paths["granule_metadata"]
+    if not file_asset_paths or "granule_metadata" not in file_asset_paths:
+        raise ValueError("File asset paths must contain 'granule_metadata'.")
+
+    graunle_metadata_file = file_asset_paths["granule_metadata"]
 
     # Read the metadata XML file
     metadata_xml = None
@@ -147,6 +162,7 @@ def add_geometry_bands(
 
     return band_paths, band_names
 
+
 def build_s2_masking_hook(
     cloud_thresh,
     snowprob_thresh,
@@ -163,9 +179,8 @@ def build_s2_masking_hook(
         snowprob_thresh=snowprob_thresh,
     )
 
-def s2_mask_processor(
-    maskbands, resolution, item, output_folder, scl_keep_classes, cloud_thresh, snowprob_thresh
-):
+
+def s2_mask_processor(maskbands, scl_keep_classes, cloud_thresh, snowprob_thresh):
     mask = None
 
     scl_band_meta, scl_band = maskbands["scl"]
@@ -177,12 +192,14 @@ def s2_mask_processor(
     # Invalidate pixels based on S2Cloudless
     # Currently we are fallingback on S2A-L2A non-collection-1, for 2022/23
     # This is temporary however it does not include the S2Cloudless band
-    if 'cloud' in maskbands:
+    if "cloud" in maskbands:
+        print("Using S2Cloudless band for cloud masking.")
         s2cloudless_band_meta, s2cloudless_band = maskbands["cloud"]
         mask = np.where(s2cloudless_band >= cloud_thresh, 0, mask)
 
     # Invalidate pixels based on Snowprob
-    if 'snow' in maskbands:
+    if "snow" in maskbands:
+        print("Using snow probability band for snow masking.")
         snowprob_band_meta, snowprob_band = maskbands["snow"]
         mask = np.where(snowprob_band >= snowprob_thresh, 0, mask)
 

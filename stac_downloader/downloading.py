@@ -1,9 +1,7 @@
-import numpy as np
-from rasterio import Env
-import requests
 import os
+
+import requests
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
-import rasterio as rio
 
 
 @retry(
@@ -32,39 +30,14 @@ def download_file(url: str, output_path: str, overwrite: bool = True) -> None:
             with open(output_path, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
-    except (requests.RequestException, IOError) as e:
+
+        # Check if filesize matches expected size
+        expected_size = int(response.headers.get("Content-Length", 0))
+        if expected_size > 0 and os.path.getsize(output_path) != expected_size:
+            raise IOError(
+                f"Downloaded file size {os.path.getsize(output_path)} does not match expected size {expected_size}."
+            )
+    except Exception as e:
         if os.path.exists(output_path):
             os.remove(output_path)
         raise e
-    
-
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-)
-def download_raster_file(url: str) -> tuple[np.ndarray, dict, tuple]:
-    """
-    Download a raster file at from a URL into memory with retry logic.
-    Args:
-        url (str): The URL to download the raster file from.
-    """
-
-    with Env(AWS_NO_SIGN_REQUEST="YES",
-             GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR",
-             GDAL_HTTP_MULTIRANGE="YES",
-             GDAL_ENABLE_CURL_MULTI="YES",
-             GDAL_HTTP_MERGE_CONSECUTIVE_RANGES="YES",
-             GDAL_HTTP_MULTIPLEX="YES",
-             GDAL_HTTP_VERSION="2"
-            ):
-        with rio.open(url) as src:
-            if src.count > 1:
-                raise ValueError(
-                    "The input file has more than one band. Currently only handling single band rasters."
-                )
-
-            data = src.read(1)  # Read the first band
-            profile = src.profile
-            bounds = src.bounds
-
-            return data, profile, bounds

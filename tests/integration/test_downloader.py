@@ -1,19 +1,22 @@
-import pytest
-import numpy as np
 from datetime import datetime
-from unittest.mock import patch, MagicMock
-from types import SimpleNamespace
+from unittest.mock import patch
+
+import numpy as np
+import pytest
+
 
 # Fake STAC item and asset structure
 class FakeAsset:
     def __init__(self, href):
         self.href = href
 
+
 class FakeItem:
     def __init__(self, id, datetime, assets):
         self.id = id
         self.datetime = datetime
         self.assets = assets
+
 
 @pytest.fixture
 def mock_stac_item():
@@ -28,28 +31,43 @@ def mock_stac_item():
         },
     )
 
+
 @pytest.fixture
 def mock_raster_data():
-    return np.array([[1, 1], [1, 1]], dtype=np.uint8), {"nodata": 0, "driver": "GTiff"}, (0, 0, 2, 2)
+    return (
+        np.array([[1, 1], [1, 1]], dtype=np.uint8),
+        {"nodata": 0, "driver": "GTiff"},
+        (0, 0, 2, 2),
+    )
+
 
 @pytest.fixture
 def patch_all(mock_raster_data):
-    with patch("stac_downloader.downloading.download_file",), \
-         patch("stac_downloader.downloading.download_raster_file", return_value=mock_raster_data), \
-         patch("stac_downloader.raster_processing.resample_raster", side_effect=lambda a, b, c, d, e: (a, b)), \
-         patch("stac_downloader.raster_processing.save_band",), \
-         patch("stac_downloader.raster_processing.build_bandstacked_vrt", side_effect=lambda path, bp, bn: path):
+    with patch(
+        "stac_downloader.downloading.download_file",
+    ), patch(
+        "stac_downloader.raster_processing.resample_raster",
+        side_effect=lambda a, b, c, d, e: (a, b),
+    ), patch(
+        "stac_downloader.raster_processing.save_band",
+    ), patch(
+        "stac_downloader.raster_processing.build_bandstacked_vrt",
+        side_effect=lambda path, bp, bn: path,
+    ):
 
         yield
+
 
 def fake_mask_hook(bands, resolution):
     combined_mask = np.ones((2, 2), dtype=np.uint8)
     return {"nodata": 0}, combined_mask
 
+
 def fake_post_hook(item, band_paths, band_names, mask, file_asset_paths, resolution, output_folder):
     band_paths["hooked"] = "hook_output.tif"
     band_names.append("hooked")
     return band_paths, band_names
+
 
 def test_stac_downloader_integration(tmp_path, mock_stac_item, patch_all):
     from stac_downloader.stac_downloader import STACDownloader
@@ -80,7 +98,12 @@ def test_stac_downloader_integration(tmp_path, mock_stac_item, patch_all):
     assert len(band_paths) == 4
     assert band_names_ordered == ["B01", "B02", "mask", "hooked"]
 
-    expected_output_contains = ["test_tile_B01_10m.tif", "test_tile_B02_10m.tif", "test_tile_mask_10m.tif", "hook_output.tif"]
+    expected_output_contains = [
+        "test_tile_B01_10m.tif",
+        "test_tile_B02_10m.tif",
+        "test_tile_mask_10m.tif",
+        "hook_output.tif",
+    ]
 
     out_fnames = [v.split("/")[-1] for v in band_paths.values()]
 
