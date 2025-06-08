@@ -24,3 +24,6 @@ testpaths = ["tests"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-mock", "pytest-cov"]
+
+[project.scripts]
+stac_downloader = "stac_downloader.cli:main"
