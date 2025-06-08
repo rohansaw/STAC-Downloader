@@ -1,0 +1,6 @@
+numpy
+rasterio
+pystac
+tenacity
+tqdm
+requests
