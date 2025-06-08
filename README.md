@@ -8,6 +8,7 @@ pip install git+https://github.com/rohansaw/STAC-Downloader
 ```
 
 ## Usage
+First identify your STAC catalog's URL and examine which assets you are interested in. To download these assets, the `STAC Downloader` provides two options:
 
 **Option 1: Command Line Interface (CLI)**
 The CLI provides a download utility for STAC data with **reduced functionality**. It does not allow directly appplying a mask nor setting custom functions to process the downloaded imagery directly. However, it might come in handy if you just want to download metadata and imagery and resample imagery to a common resolution.
