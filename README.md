@@ -11,7 +11,8 @@ pip install git+https://github.com/rohansaw/STAC-Downloader
 First identify your STAC catalog's URL and examine which assets you are interested in. To download these assets, the `STAC Downloader` provides two options:
 
 **Option 1: Command Line Interface (CLI)**
-The CLI provides a download utility for STAC data with **reduced functionality**. It does not allow directly appplying a mask nor setting custom functions to process the downloaded imagery directly. However, it might come in handy if you just want to download metadata and imagery and resample imagery to a common resolution.
+
+The CLI provides a download utility for STAC data with __reduced functionality__. It does not allow directly appplying a mask nor setting custom functions to process the downloaded imagery directly. However, it might come in handy if you just want to download metadata and imagery and resample imagery to a common resolution.
 
 ```bash
 python
@@ -45,8 +46,10 @@ Options:
                                   overwrite]
   --num-workers INTEGER           Parallel download workers  [default: 1]
   --help                          Show this message and exit.
+```
 
 **Option 2: Import Package**
+
 The `STAC Downloader` is designed to be generic for different `STAC` catalogs and processing options. Therefore, import the package provides you with more flexibility for custom processing through the setup of custom hooks. The availble hook attachment points  are the following:
 - `masking_hook`: Created a mask from `mask_bands` that will be used for masking all other raster bands.
 - `band_processing_hoosk`: Not yet implemented. This will allow processing bands individually with the provided function.
