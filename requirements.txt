@@ -4,3 +4,6 @@ pystac
 tenacity
 tqdm
 requests
+colorlog
+pystac
+pystac-client

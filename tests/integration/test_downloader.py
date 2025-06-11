@@ -63,7 +63,9 @@ def fake_mask_hook(bands, resolution):
     return {"nodata": 0}, combined_mask
 
 
-def fake_post_hook(item, band_paths, band_names, mask, file_asset_paths, resolution, output_folder):
+def fake_post_hook(
+    item, band_paths, band_names, mask, file_asset_paths, resolution, output_folder
+):
     band_paths["hooked"] = "hook_output.tif"
     band_names.append("hooked")
     return band_paths, band_names

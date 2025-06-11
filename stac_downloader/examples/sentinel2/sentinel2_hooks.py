@@ -19,13 +19,17 @@ def get_s2_geometry_data(metadata_xml):
     azimuth_angle_el = xml_root.findall(".//Mean_Sun_Angle/AZIMUTH_ANGLE")[0]
     azimuth_angle_units = azimuth_angle_el.attrib["unit"]
     if azimuth_angle_units != "deg":
-        raise Exception(f"azimuth_angle_units must be 'deg', but it is {azimuth_angle_units}.")
+        raise Exception(
+            f"azimuth_angle_units must be 'deg', but it is {azimuth_angle_units}."
+        )
     azimuth_angle = float(azimuth_angle_el.text)
 
     zenith_angle_el = xml_root.findall(".//Mean_Sun_Angle/ZENITH_ANGLE")[0]
     zenith_angle_units = zenith_angle_el.attrib["unit"]
     if zenith_angle_units != "deg":
-        raise Exception(f"zenith_angle_units must be 'deg', but it is {zenith_angle_units}.")
+        raise Exception(
+            f"zenith_angle_units must be 'deg', but it is {zenith_angle_units}."
+        )
     zenith_angle = float(zenith_angle_el.text)
 
     # Extract mean viewing incidence angles for band 8A
@@ -65,7 +69,9 @@ def compute_cos_angles(
     cos_vza = np.uint16(np.cos(np.deg2rad(mean_incidence_zenith_angle_b8a)) * 10000)
     cos_sza = np.uint16(np.cos(np.deg2rad(zenith_angle)) * 10000)
     # Converting to int16 to match GEE script
-    cos_raa = np.int16(np.cos(np.deg2rad(azimuth_angle - mean_incidence_azimuth_angle_b8a)) * 10000)
+    cos_raa = np.int16(
+        np.cos(np.deg2rad(azimuth_angle - mean_incidence_azimuth_angle_b8a)) * 10000
+    )
     return {
         "cos_vza": cos_vza,
         "cos_sza": cos_sza,
@@ -80,7 +86,9 @@ def create_geometry_bands(item, cos_angles, metadata, output_folder, blocksize=2
     for angle_name, angle_value in cos_angles.items():
         geo_dtype = np.int16
         # Create empty array with same dimensions as other bands
-        band_data = np.full((metadata["height"], metadata["width"]), angle_value, dtype=geo_dtype)
+        band_data = np.full(
+            (metadata["height"], metadata["width"]), angle_value, dtype=geo_dtype
+        )
 
         # Save the geometry band
         output_path = os.path.join(
@@ -152,7 +160,9 @@ def add_geometry_bands(
         }
 
     # Create the geometry bands using the reference metadata
-    geometry_band_paths = create_geometry_bands(item, cos_angles, reference_metadata, output_folder)
+    geometry_band_paths = create_geometry_bands(
+        item, cos_angles, reference_metadata, output_folder
+    )
 
     # Ensure correct bandorder for output
     band_paths["cos_vza"] = geometry_band_paths["cos_vza"]

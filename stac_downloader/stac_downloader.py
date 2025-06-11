@@ -35,7 +35,8 @@ class STACDownloader:
     def register_masking_hook(self, hook):
         """
         Register a hook function to create a mask from the mask ban.
-        The hook should take the downloaded mask bands (dict: name-> profile, mask) and return a binary mask as: profile, binary_mask.
+        The hook should take the downloaded mask bands (dict: name-> profile, mask)
+        and return a binary mask as: profile, binary_mask.
         """
         if not callable(hook):
             raise ValueError("Hook must be a callable function.")
@@ -109,7 +110,9 @@ class STACDownloader:
         out_path = os.path.join(output_folder, f_name)
         return out_path
 
-    def _download_file_assets(self, item: pyStacItem, file_assets: List[str], output_folder: str):
+    def _download_file_assets(
+        self, item: pyStacItem, file_assets: List[str], output_folder: str
+    ):
         file_asset_paths = {}
         if file_assets:
             for file_asset in file_assets:
@@ -174,10 +177,13 @@ class STACDownloader:
                         nodata_value = resampled_profile["nodata"]
                         if nodata_value is None:
                             raise Exception(
-                                f"Raster asset '{raster_asset}' does not have a defined nodata value, which is required to apply a mask."
+                                f"Raster asset '{raster_asset}' does not have \
+                                  a defined nodata value, which is required to apply a mask."
                             )
 
-                        resampled_raster = apply_mask(resampled_raster, mask, nodata_value)
+                        resampled_raster = apply_mask(
+                            resampled_raster, mask, nodata_value
+                        )
 
                     raster_out_path = self._save_band(
                         resampled_raster,
@@ -208,7 +214,9 @@ class STACDownloader:
         resolution: float,
         output_folder: str,
     ):
-        raster_out_path = self._get_file_output_path(item, asset_name, resolution, output_folder)
+        raster_out_path = self._get_file_output_path(
+            item, asset_name, resolution, output_folder
+        )
         try:
             save_band(raster, profile, raster_out_path, asset_name)
         except Exception as e:
@@ -227,9 +235,13 @@ class STACDownloader:
     ):
         if mask_assets:
             if len(mask_assets) > 1 and self.masking_hook is None:
-                raise ValueError("Maskband processing function required for multiple mask bands.")
+                raise ValueError(
+                    "Maskband processing function required for multiple mask bands."
+                )
 
-            self.logger.info("Downloading mask assets and resampling to target resolution...")
+            self.logger.info(
+                "Downloading mask assets and resampling to target resolution..."
+            )
 
             downloaded_maskbands = {}
             for mask_asset in mask_assets:
@@ -237,7 +249,9 @@ class STACDownloader:
                     raise ValueError(f"Mask asset '{mask_asset}' not found in item.")
 
                 mask_url = item.assets[mask_asset].href
-                self.logger.info(f"Downloading mask asset '{mask_asset}' from {mask_url}...")
+                self.logger.info(
+                    f"Downloading mask asset '{mask_asset}' from {mask_url}..."
+                )
 
                 # Resample the mask to the target resolution
                 resampled_mask, resampled_mask_profile = resample_raster(
@@ -293,7 +307,9 @@ class STACDownloader:
 
         return band_paths, band_names
 
-    def _get_vrt_output_path(self, item: pyStacItem, resolution: float, output_folder: str) -> str:
+    def _get_vrt_output_path(
+        self, item: pyStacItem, resolution: float, output_folder: str
+    ) -> str:
         return os.path.join(
             output_folder,
             f"{item.id}_{resolution}m_{item.datetime.strftime('%Y-%m-%d')}.vrt",
@@ -371,13 +387,17 @@ class STACDownloader:
         possible_outputs = []
         for raster_asset in raster_assets:
             possible_outputs.append(
-                self._get_file_output_path(item, raster_asset, resolution, output_folder)
+                self._get_file_output_path(
+                    item, raster_asset, resolution, output_folder
+                )
             )
 
         for file_asset in file_assets:
             ext = os.path.splitext(item.assets[file_asset].href)[-1].lstrip(".")
             possible_outputs.append(
-                self._get_file_output_path(item, file_asset, None, output_folder, extension=ext)
+                self._get_file_output_path(
+                    item, file_asset, None, output_folder, extension=ext
+                )
             )
 
         if save_mask_as_band:
@@ -452,7 +472,9 @@ class STACDownloader:
         # Filter items by checkig it output already exists
         if os.path.exists(output_folder):
             if not overwrite:
-                items = self._check_for_existing_output(items, output_folder, resolution, overwrite)
+                items = self._check_for_existing_output(
+                    items, output_folder, resolution, overwrite
+                )
         else:
             os.makedirs(output_folder)
 

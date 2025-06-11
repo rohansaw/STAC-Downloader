@@ -130,7 +130,9 @@ def build_bandstacked_vrt(
     try:
         subprocess.run(vrt_build_command, check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"gdalbuildvrt failed (exit {e.returncode}): {e.stderr.decode()}") from e
+        raise RuntimeError(
+            f"gdalbuildvrt failed (exit {e.returncode}): {e.stderr.decode()}"
+        ) from e
     except OSError as e:
         raise RuntimeError(f"Failed to launch gdalbuildvrt: {e}") from e
 
@@ -163,7 +165,9 @@ def build_bandstacked_vrt(
         raise FileNotFoundError(f"Output VRT file was not created: {output_file_path}")
 
     if create_gtiff and not os.path.exists(output_file_path_gtiff):
-        raise FileNotFoundError(f"Output GeoTIFF file was not created: {output_file_path_gtiff}")
+        raise FileNotFoundError(
+            f"Output GeoTIFF file was not created: {output_file_path_gtiff}"
+        )
 
     return output_file_path
 
@@ -176,7 +180,9 @@ def apply_mask(raster: np.ndarray, mask: np.ndarray, nodata_value):
     if raster.shape != mask.shape:
         raise ValueError("Raster and mask must have the same shape.")
 
-    masked_raster = np.where(mask, raster, nodata_value)  # Replace masked pixels with nodataval
+    masked_raster = np.where(
+        mask, raster, nodata_value
+    )  # Replace masked pixels with nodataval
     return masked_raster
 
 

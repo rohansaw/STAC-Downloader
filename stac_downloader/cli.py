@@ -9,6 +9,7 @@ from stac_downloader.raster_processing import ResamplingMethod
 from stac_downloader.stac_downloader import STACDownloader
 from stac_downloader.utils import get_logger
 
+
 @click.command(context_settings={"show_default": True})
 @click.option(
     "--catalog-url",
@@ -24,7 +25,14 @@ from stac_downloader.utils import get_logger
     "--raster-assets",
     multiple=True,
     default=[
-        "green", "red", "rededge1", "rededge2", "rededge3", "nir08", "swir16", "swir22"
+        "green",
+        "red",
+        "rededge1",
+        "rededge2",
+        "rededge3",
+        "nir08",
+        "swir16",
+        "swir22",
     ],
     help="Raster asset names",
 )
@@ -41,7 +49,7 @@ from stac_downloader.utils import get_logger
     help="Maximum cloud cover % to filter on.",
 )
 @click.option(
-    "--geometry-path", 
+    "--geometry-path",
     required=True,
     type=click.Path(exists=True, dir_okay=False, readable=True),
     help="GeoJSON file with search geometry",
@@ -134,6 +142,7 @@ def main(
         num_workers=num_workers,
     )
     logger.info(f"Downloaded {len(downloaded)} items.")
+
 
 if __name__ == "__main__":
     main()
