@@ -15,7 +15,6 @@ First identify your STAC catalog's URL and examine which assets you are interest
 The CLI provides a download utility for STAC data with __reduced functionality__. It does not allow directly appplying a mask nor setting custom functions to process the downloaded imagery directly. However, it might come in handy if you just want to download metadata and imagery and resample imagery to a common resolution.
 
 ```bash
-python
 Usage: stac_downloader [OPTIONS]
 
   Download Imagery and Metadata from a STAC catalog and resample.
@@ -50,13 +49,70 @@ Options:
 
 **Option 2: Import Package**
 
-The `STAC Downloader` is designed to be generic for different `STAC` catalogs and processing options. Therefore, import the package provides you with more flexibility for custom processing through the setup of custom hooks. The availble hook attachment points  are the following:
+The `STAC Downloader` is designed to be generic for different `STAC` catalogs and processing options. Therefore, importing the package provides you with more flexibility for custom processing through the setup of custom hooks. The available hook attachment points are the following:
 - `masking_hook`: Created a mask from `mask_bands` that will be used for masking all other raster bands.
 - `band_processing_hoosk`: Not yet implemented. This will allow processing bands individually with the provided function.
 - `post_download_hooks`: Allows running any form of e.g bandcombination, creation of additional bands etc after all raster bands have been downloaded .
 
 ```python
-# TODO: Need to add an example on how to import and use the most relevant functions
+from stac_downloader.stac_downloader import STACDownloader
+from typing import Dict
+
+# Initialize the downloader
+stac_downloader = STACDownloader(catalog_url=STACK_CATALOG_URL)
+
+# Optional: Define a masking hook, that receives dictionary of bands as an input
+def masking_hook(mask_assets: Dict[str, np.ndarray]):
+    mask = []
+
+    for asset_name, raster in mask_assets.items():
+        # build BINARY mask with 1 being pixels to keep
+    
+    return mask
+
+# Optional: Define a postprocessing hook with the following parameters
+def postprocessing_hook(item: pyStacItem,
+    band_paths: Dict[str, str],
+    band_names: List[str],
+    mask: np.ndarray,
+    file_asset_paths: Dict[str, str],
+    resolution: float,
+    output_folder: str):
+
+    # read bands, combine bands and save new output to output folder etc.
+
+    # Add new bands to bandpaths, remove old ones if necessary
+
+    # Update band names to keep the correct order for band stacking
+
+    return band_paths, band_names
+
+# Register hooks
+stac_downloader.register_masking_hook(masking_hook)
+stac_downloader.register_postdownload_hook(postprocessing_hook)
+
+# Query STAC catalog to fetch items - Checkout examples for actual parameters
+items = stac_downloader.query_catalog(
+    collection_name=STAC_COLLECTION_NAME,
+    start_date=START_DATE,
+    end_date=END_DATE,
+    geometry=GEOMETRY,
+    query={"eo:cloud_cover": {"lt": MAX_CLOUD_COVER}},
+)
+
+# Download items - Checkout examples for actual parameters
+downloaded_item_paths = stac_downloader.download_items(
+    items=items,
+    raster_assets=RASTER_ASSETS,
+    file_assets=FILE_ASSETS,
+    mask_assets=MASK_ASSETS,
+    output_folder=OUTPUT_FOLDER,
+    overwrite=OVERWRITE,
+    resolution=RESOLUTION,
+    resampling_method=RESAMPLING_METHOD,
+    num_workers=NUM_WORKERS,
+)
+
 ```
 
 Head over to the examples section (`stac_downloader/examples`) to see how to fetch & process Sentinel-2 imagery, with sun angles and masking.
