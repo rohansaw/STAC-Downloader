@@ -17,7 +17,7 @@ from stac_downloader.raster_processing import (
     resample_raster,
     save_band,
 )
-from stac_downloader.utils import get_logger
+from stac_downloader.utils import get_logger, run_subprocess
 
 
 class STACDownloader:
@@ -31,6 +31,14 @@ class STACDownloader:
         self.masking_hook = None
         self.bandprocessing_hooks = []
         self.postdownload_hooks = []
+
+        self._check_requirements()
+
+    def _check_requirements(self):
+        try:
+            run_subprocess(["gdalinfo", "--version"], "Check GDAL installation", self.logger)
+        except RuntimeError:
+            raise RuntimeError("GDAL is not installed or not in the PATH.")
 
     def register_masking_hook(self, hook):
         """
