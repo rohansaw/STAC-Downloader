@@ -1,4 +1,5 @@
 import os
+import xml.etree.ElementTree as ET
 
 import requests
 from tenacity import (
@@ -42,6 +43,16 @@ def download_file(url: str, output_path: str, overwrite: bool = True) -> None:
             raise IOError(
                 f"Downloaded file size {os.path.getsize(output_path)} does not match expected size {expected_size}."
             )
+
+        # Check if xml file is corrupted
+        if os.path.splitext(output_path)[1] == '.xml':
+            try:
+                with open(output_path, "r") as f:
+                    xml_data = f.read()
+                xml_root = ET.fromstring(xml_data)
+            except Exception as e:
+                logger.error('Failed to download xml data in a parsable format.')
+                raise e
     except Exception as e:
         if os.path.exists(output_path):
             os.remove(output_path)
