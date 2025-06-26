@@ -1,11 +1,15 @@
 import os
+from pathlib import Path
 import subprocess
 from enum import Enum
+import tempfile
 
 import numpy as np
 import rasterio as rio
 from rasterio.warp import Resampling, calculate_default_transform, reproject
 from tenacity import retry, stop_after_attempt, wait_exponential
+
+from stac_downloader.utils import persist_file
 
 
 # Non library specific resampling method enum
@@ -97,13 +101,17 @@ def save_band(raster, profile, output_path, band_name):
         }
     )
 
-    with rio.open(
-        output_path,
-        "w",
-        **profile,
-    ) as dst:
-        dst.write(raster, 1)
-        dst.set_band_description(1, band_name)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        temp_fname = os.path.join(tmp_dir, Path(output_path).stem)
+        with rio.open(
+            temp_fname,
+            "w",
+            **profile,
+        ) as dst:
+            dst.write(raster, 1)
+            dst.set_band_description(1, band_name)    
+    
+    persist_file(temp_fname, output_path)
 
     return output_path
 

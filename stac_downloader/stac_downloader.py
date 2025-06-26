@@ -76,10 +76,11 @@ class STACDownloader:
         bbox=None,
         query=None,
         catalog_url=None,
+        modifier=None,
         **kwargs,
     ) -> List[pyStacItem]:
         if catalog_url:
-            catalog = pyStacClient.open(catalog_url)
+            catalog = pyStacClient.open(catalog_url, modifier=modifier)
         else:
             if self.catalog is None:
                 raise ValueError("Catalog URL must be provided to query the catalog.")

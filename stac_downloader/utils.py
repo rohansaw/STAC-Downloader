@@ -1,4 +1,5 @@
 import logging
+import shutil
 import subprocess
 
 import colorlog
@@ -44,3 +45,6 @@ def run_subprocess(cmd: list, step_desc: str, logger):
         logger.error(f"Error during {step_desc}: return code {e.returncode}")
         raise RuntimeError(f"{step_desc} failed (exit code {e.returncode})")
     logger.info(f"Completed: {step_desc} in {time.time() - t0:.2f} seconds")
+
+def persist_file(temp_path, target_path):
+    shutil.move(temp_path, target_path)
