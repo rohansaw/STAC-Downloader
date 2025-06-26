@@ -512,7 +512,6 @@ class STACDownloader:
                         pbar.update(1)
 
             except KeyboardInterrupt:
-                # TODO ensure that if we terminate we clean incomplete output
                 self.logger.error("\nInterrupted by user. Terminating workers...")
                 pool.close()
                 pool.join()

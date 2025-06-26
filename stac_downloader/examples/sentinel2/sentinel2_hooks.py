@@ -199,13 +199,12 @@ def s2_mask_processor(maskbands, scl_keep_classes, cloud_thresh, snowprob_thresh
     # Invalidate pixels based on SCL
     mask = np.where(np.isin(scl_band, scl_keep_classes), mask, 0)
 
-    # Invalidate pixels based on S2Cloudless
-    # Currently we are fallingback on S2A-L2A non-collection-1, for 2022/23
-    # This is temporary however it does not include the S2Cloudless band
+    # Invalidate pixels based
+
     if "cloud" in maskbands:
-        print("Using S2Cloudless band for cloud masking.")
-        s2cloudless_band_meta, s2cloudless_band = maskbands["cloud"]
-        mask = np.where(s2cloudless_band >= cloud_thresh, 0, mask)
+        print("Using cloud probability band for cloud masking.")
+        cloudprob_band_meta, cloudprob_band = maskbands["cloud"]
+        mask = np.where(cloudprob_band >= cloud_thresh, 0, mask)
 
     # Invalidate pixels based on Snowprob
     if "snow" in maskbands:

@@ -51,14 +51,14 @@ OVERWRITE = False  # Set to True to overwrite existing files
 RESAMPLING_METHOD = ResamplingMethod.NEAREST  # Resampling method for raster assets
 NUM_WORKERS = 16  # Number of parallel workers for downloading
 
-CLOUD_THRESH = 10  # Threshold for cloud mask from S2Cloudless in percent
-SNOWPROB_THRESH = 15  # Threshold for snow probability mask from S2Cloudless in percent
+CLOUD_THRESH = 10  # Threshold for probability cloud mask in percent
+SNOWPROB_THRESH = 15  # Threshold for snow probability mask in percent
 SCL_KEEP_CLASSES = [4, 5]
 
 # Setup STAC Downloader
 stac_downloader = STACDownloader(catalog_url=STACK_CATALOG_URL, logger=logger)
 
-# Register masking hook based on SCL & S2-Cloudless with a threshold for cloud and snow
+# Register masking hook based on SCL & Cloud Probs with a threshold for cloud and snow
 s2_masking_hook = build_s2_masking_hook(
     cloud_thresh=CLOUD_THRESH,
     snowprob_thresh=SNOWPROB_THRESH,
