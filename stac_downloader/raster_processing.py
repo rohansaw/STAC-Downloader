@@ -102,7 +102,7 @@ def save_band(raster, profile, output_path, band_name):
     )
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        temp_fname = os.path.join(tmp_dir, Path(output_path).stem)
+        temp_fname = os.path.join(tmp_dir, Path(output_path).name)
         with rio.open(
             temp_fname,
             "w",
@@ -111,7 +111,7 @@ def save_band(raster, profile, output_path, band_name):
             dst.write(raster, 1)
             dst.set_band_description(1, band_name)    
     
-    persist_file(temp_fname, output_path)
+        persist_file(temp_fname, output_path)
 
     return output_path
 

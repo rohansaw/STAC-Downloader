@@ -1,3 +1,4 @@
+from collections import defaultdict
 import multiprocessing
 import os
 from typing import Dict, List, Tuple
@@ -21,15 +22,17 @@ from stac_downloader.utils import get_logger, run_subprocess
 
 
 class STACDownloader:
-    def __init__(self, catalog_url=None, logger=None):
+    def __init__(self, catalog_url=None, logger=None, stac_catalog_modifier=None):
 
         if logger is None:
             logger = get_logger()
 
+        self.stac_catalog_modifier = stac_catalog_modifier 
+
         self.logger = logger
-        self.catalog = pyStacClient.open(catalog_url) if catalog_url else None
+        self.catalog = pyStacClient.open(catalog_url, modifier=stac_catalog_modifier) if catalog_url else None
         self.masking_hook = None
-        self.bandprocessing_hooks = []
+        self.bandprocessing_hooks = defaultdict(list)
         self.postdownload_hooks = []
 
         self._check_requirements()
@@ -58,9 +61,12 @@ class STACDownloader:
             hook (callable): The function to register. Must accept parameters: raster, profile, item.
             band_assets (List[str]): List of asset names that the hook should be applied to.
         """
-        raise NotImplementedError(
-            "Band processing hooks are not implemented yet. Use postdownload hooks instead."
-        )
+        if not callable(hook):
+            raise ValueError("Hook must be a callable function.")
+        
+        for asset_name in band_assets:
+            self.bandprocessing_hooks[asset_name].append(hook)
+
 
     def register_postdownload_hook(self, hook):
         if not callable(hook):
@@ -79,6 +85,7 @@ class STACDownloader:
         modifier=None,
         **kwargs,
     ) -> List[pyStacItem]:
+        modifier = modifier if modifier else self.stac_catalog_modifier
         if catalog_url:
             catalog = pyStacClient.open(catalog_url, modifier=modifier)
         else:
@@ -115,6 +122,7 @@ class STACDownloader:
         output_folder: str,
         extension: str = "tif",
     ):
+        self.logger.info(extension)
         f_name = f"{item.id}_{asset_name}{'_' + str(resolution) + 'm' if resolution is not None else ''}.{extension}"
         out_path = os.path.join(output_folder, f_name)
         return out_path
@@ -129,10 +137,15 @@ class STACDownloader:
                     raise ValueError(f"Asset '{file_asset}' not found in item.")
 
                 file_url = item.assets[file_asset].href
+                self.logger.info(file_url)
                 ext = os.path.splitext(file_url)[-1].lstrip(".")
+                self.logger.info(ext)
+                ext = ext.split('?')[0] # Removing signing key
+                self.logger.info(ext)
                 file_out_path = self._get_file_output_path(
                     item, file_asset, None, output_folder, extension=ext
                 )
+                self.logger.info(file_out_path)
                 try:
                     download_file(file_url, file_out_path, overwrite=True)
                 except Exception as e:
@@ -142,6 +155,17 @@ class STACDownloader:
                 file_asset_paths[file_asset] = file_out_path
 
         return file_asset_paths
+    
+    def _process_band(self, raster: np.ndarray, profile: dict, item: pyStacItem, asset_name: str):
+        processors = self.bandprocessing_hooks[asset_name]
+
+        if not processors:
+            return raster, profile
+        
+        for processor in processors:
+            raster, profile = processor(raster, profile, item)
+
+        return raster, profile
 
     def _download_raster_assets(
         self,
@@ -181,22 +205,24 @@ class STACDownloader:
                         raster_url, resolution, resampling_method
                     )
 
+                    processed_raster, processed_profile = self._process_band(processed_raster, resampled_profile, item, raster_asset)
+
                     # Apply mask if provided
                     if mask is not None:
-                        nodata_value = resampled_profile["nodata"]
+                        nodata_value = processed_profile["nodata"]
                         if nodata_value is None:
                             raise Exception(
                                 f"Raster asset '{raster_asset}' does not have \
                                   a defined nodata value, which is required to apply a mask."
                             )
 
-                        resampled_raster = apply_mask(
-                            resampled_raster, mask, nodata_value
+                        processed_raster = apply_mask(
+                            processed_raster, mask, nodata_value
                         )
 
                     raster_out_path = self._save_band(
-                        resampled_raster,
-                        resampled_profile,
+                        processed_raster,
+                        processed_profile,
                         item,
                         raster_asset,
                         resolution,
@@ -403,6 +429,7 @@ class STACDownloader:
 
         for file_asset in file_assets:
             ext = os.path.splitext(item.assets[file_asset].href)[-1].lstrip(".")
+            ext = ext.split("?")[0]
             possible_outputs.append(
                 self._get_file_output_path(
                     item, file_asset, None, output_folder, extension=ext
@@ -500,6 +527,8 @@ class STACDownloader:
             }
             for item in items
         ]
+
+        self.logger.info(f"Using {num_workers} workers out of {multiprocessing.cpu_count()} available cores")
 
         outputs = []
         with multiprocessing.Pool(processes=num_workers) as pool:

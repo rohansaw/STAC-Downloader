@@ -34,34 +34,28 @@ def download_file(url: str, output_path: str, overwrite: bool = True) -> None:
     if not overwrite and os.path.exists(output_path):
         return
 
-    try:
-        with requests.get(url, stream=True) as response:
-            response.raise_for_status()
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                temp_fname = os.path.join(tmp_dir, Path(output_path).stem)
-                with open(temp_fname, "wb") as f:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        f.write(chunk)
+    with requests.get(url, stream=True) as response:
+        response.raise_for_status()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            temp_fname = os.path.join(tmp_dir, Path(output_path).name)
+            with open(temp_fname, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
 
-        # Check if filesize matches expected size
-        expected_size = int(response.headers.get("Content-Length", 0))
-        if expected_size > 0 and os.path.getsize(output_path) != expected_size:
-            raise IOError(
-                f"Downloaded file size {os.path.getsize(output_path)} does not match expected size {expected_size}."
-            )
-        
-        # Validate xml not corrupted during download
-        if os.path.splitext(output_path)[1] == '.xml':
-            try:
-                with open(output_path, "r") as f:
-                    xml_data = f.read()
-                xml_root = ET.fromstring(xml_data)
-            except Exception as e:
-                raise Exception('Corrupted XML File detected.')
+            # Check if filesize matches expected size
+            expected_size = int(response.headers.get("Content-Length", 0))
+            if expected_size > 0 and os.path.getsize(temp_fname) != expected_size:
+                raise IOError(
+                    f"Downloaded file size {os.path.getsize(temp_fname)} does not match expected size {expected_size}."
+                )
+            
+            # Validate xml not corrupted during download
+            if os.path.splitext(temp_fname)[1] == '.xml':
+                try:
+                    with open(temp_fname, "r") as f:
+                        xml_data = f.read()
+                    xml_root = ET.fromstring(xml_data)
+                except Exception as e:
+                    raise Exception('Corrupted XML File detected.')
 
-    except Exception as e:
-        if os.path.exists(output_path):
-            os.remove(output_path)
-        raise e
-    
     persist_file(temp_fname, output_path)
