@@ -47,7 +47,7 @@ MAX_CLOUD_COVER = 60  # Maximum cloud cover percentage to filter items
 GEOMETRY_PATH = "/home/rohan/nasa-harvest/vercye/data/Ukraine/poltava_hull.geojson"
 RESOLUTION = 20  # Resolution in meters
 START_DATE = "2023-01-01"
-END_DATE = "2023-01-31"
+END_DATE = "2023-01-05"
 OUTPUT_FOLDER = "/home/rohan/Downloads/sentinel2_mpc_downloads"
 OVERWRITE = False  # Set to True to overwrite existing files
 RESAMPLING_METHOD = ResamplingMethod.NEAREST  # Resampling method for raster assets
@@ -104,4 +104,4 @@ downloaded_item_paths = stac_downloader.download_items(
     num_workers=NUM_WORKERS,
 )
 
-logger.info(f"Downloaded {len(downloaded_item_paths)} items to {OUTPUT_FOLDER}")
+logger.info(f"Downloads saved under {OUTPUT_FOLDER}.")

@@ -480,10 +480,15 @@ class STACDownloader:
         overwrite: bool,
     ):
         filtered_items = []
+        n_already_downloaded = 0
         for item in items:
             output_path = self._get_vrt_output_path(item, resolution, output_folder)
             if not os.path.exists(output_path) or overwrite:
                 filtered_items.append(item)
+            else:
+                n_already_downloaded += 1
+
+        self.logger.info(f'{n_already_downloaded}/{len(items)} items already downloaded.')
 
         return filtered_items
 
@@ -508,6 +513,10 @@ class STACDownloader:
                 )
         else:
             os.makedirs(output_folder)
+
+        if len(items) == 0:
+            self.logger.info('All items already downloaded. Exiting.')
+            return
 
         job_args = [
             {
