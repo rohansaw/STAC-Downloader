@@ -36,6 +36,7 @@ def download_file(url: str, output_path: str, overwrite: bool = True) -> None:
 
     with requests.get(url, stream=True) as response:
         response.raise_for_status()
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             temp_fname = os.path.join(tmp_dir, Path(output_path).name)
             with open(temp_fname, "wb") as f:
@@ -58,4 +59,4 @@ def download_file(url: str, output_path: str, overwrite: bool = True) -> None:
                 except Exception as e:
                     raise Exception('Corrupted XML File detected.')
 
-    persist_file(temp_fname, output_path)
+            persist_file(temp_fname, output_path)

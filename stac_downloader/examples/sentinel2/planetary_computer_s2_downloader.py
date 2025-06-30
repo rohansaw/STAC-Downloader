@@ -2,7 +2,7 @@ import os
 import time
 
 import geopandas as gpd
-from sentinel2_hooks import build_geometry_band_adder, build_s2_masking_hook
+from sentinel2_hooks import build_geometry_band_adder, build_s2_masking_hook, s2_harmonization_processor
 import planetary_computer
 
 from stac_downloader.raster_processing import ResamplingMethod
@@ -25,6 +25,7 @@ from stac_downloader.utils import get_logger
 
 logger = get_logger()
 
+# Define MPC-Specific Params
 STACK_CATALOG_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
 STAC_COLLECTION_NAME = "sentinel-2-l2a"
 MASK_ASSETS = ["SCL"]
@@ -47,15 +48,15 @@ GEOMETRY_PATH = "/home/rohan/nasa-harvest/vercye/data/Ukraine/poltava_hull.geojs
 RESOLUTION = 20  # Resolution in meters
 START_DATE = "2023-01-01"
 END_DATE = "2023-01-31"
-OUTPUT_FOLDER = "/home/rohan/Downloads/sentinel2_c1_l2a_downloads"
+OUTPUT_FOLDER = "/home/rohan/Downloads/sentinel2_mpc_downloads"
 OVERWRITE = False  # Set to True to overwrite existing files
 RESAMPLING_METHOD = ResamplingMethod.NEAREST  # Resampling method for raster assets
 NUM_WORKERS = 16  # Number of parallel workers for downloading
 
-SCL_KEEP_CLASSES = [4, 5]
-SCL_BANDNAME = 'SCL'
+SCL_KEEP_CLASSES = [4, 5] # Class Values that should be kept from SCL Mask. All others are set to nodata
+SCL_BANDNAME = 'SCL' # SCL Bandname
 
-MODIFIER = planetary_computer.sign_inplace
+MODIFIER = planetary_computer.sign_inplace # Required from MPC
 
 # Setup STAC Downloader
 stac_downloader = STACDownloader(catalog_url=STACK_CATALOG_URL, logger=logger, stac_catalog_modifier=MODIFIER)
@@ -71,6 +72,10 @@ stac_downloader.register_masking_hook(s2_masking_hook)
 add_geometry_bands = build_geometry_band_adder(granule_mtd_asset_name='granule-metadata')
 stac_downloader.register_postdownload_hook(add_geometry_bands)
 
+# Register hook to harmonize the data processed with baseline before 4, to match the outputs from baseline 4
+stac_downloader.register_bandprocessing_hook(s2_harmonization_processor, band_assets=RASTER_ASSETS)
+
+# Query the STAC catalog
 logger.info(f"Searching for items from {START_DATE} to {END_DATE}...")
 t0 = time.time()
 geometry = gpd.read_file(GEOMETRY_PATH).geometry.values[0] if GEOMETRY_PATH else None

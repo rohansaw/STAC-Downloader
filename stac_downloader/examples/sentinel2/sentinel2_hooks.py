@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime, timezone
 import os
 import xml.etree.ElementTree as ET
 from functools import partial
@@ -115,7 +115,6 @@ def create_geometry_bands(item, cos_angles, metadata, output_folder, blocksize=2
             dst.write(band_data, 1)
 
         geometry_band_paths[angle_name] = output_path
-        print(f"Created geometry band {angle_name}")
 
     return geometry_band_paths
 
@@ -136,8 +135,8 @@ def add_geometry_bands(
     output_folder: str,
     granule_mtd_asset_name = "granule_metadata"
 ):
-    if not file_asset_paths or "granule_metadata" not in file_asset_paths:
-        raise ValueError("File asset paths must contain 'granule_metadata'.")
+    if not file_asset_paths or granule_mtd_asset_name not in file_asset_paths:
+        raise ValueError(f"File asset paths must contain '{granule_mtd_asset_name}'.")
 
     graunle_metadata_file = file_asset_paths[granule_mtd_asset_name]
 
@@ -198,6 +197,9 @@ def build_s2_masking_hook(
         scl_keep_classes=scl_keep_classes,
         cloud_thresh=cloud_thresh,
         snowprob_thresh=snowprob_thresh,
+        scl_bandname=scl_bandname,
+        cloudprob_bandname=cloudprob_bandname,
+        snowprob_bandname=snowprob_bandname
     )
 
 
@@ -210,17 +212,15 @@ def s2_mask_processor(maskbands, scl_keep_classes, cloud_thresh, snowprob_thresh
     # Invalidate pixels based on SCL
     mask = np.where(np.isin(scl_band, scl_keep_classes), mask, 0)
 
-    # Invalidate pixels based on S2Cloudless
+    # Invalidate pixels based on cloud probability
     # Currently we are fallingback on S2A-L2A non-collection-1, for 2022/23
     # This is temporary however it does not include the S2Cloudless band
     if "cloud" in maskbands:
-        print("Using S2Cloudless band for cloud masking.")
         s2cloudless_band_meta, s2cloudless_band = maskbands[cloudprob_bandname]
         mask = np.where(s2cloudless_band >= cloud_thresh, 0, mask)
 
-    # Invalidate pixels based on Snowprob
+    # Invalidate pixels based on snow probability
     if "snow" in maskbands:
-        print("Using snow probability band for snow masking.")
         snowprob_band_meta, snowprob_band = maskbands[snowprob_bandname]
         mask = np.where(snowprob_band >= snowprob_thresh, 0, mask)
 
@@ -229,11 +229,11 @@ def s2_mask_processor(maskbands, scl_keep_classes, cloud_thresh, snowprob_thresh
     return new_metadata, mask
 
 def s2_harmonization_processor(raster: np.ndarray, raster_profile: dict, item: pyStacItem):
-    #  Harmonizes scenes freom before 2022-01-25 to match the baseline >= 4.0 format
+    # Harmonizes scenes freom before 2022-01-25 to match the baseline >= 4.0 format
     # Adds a shift of +1000 to match the ESA introduced shift
     tile_date = item.datetime
 
-    if tile_date < datetime(2022, 1, 25, tzinfo=datetime.timezone.utc):
+    if tile_date < datetime(2022, 1, 25, tzinfo=timezone.utc):
         nodata_val = raster_profile['nodata']
         raster = np.where(raster != nodata_val, raster + 1000, nodata_val)
 

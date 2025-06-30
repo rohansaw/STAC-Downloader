@@ -54,7 +54,7 @@ class STACDownloader:
 
         self.masking_hook = hook
 
-    def register_bandprocessing_hook(self, hook, band_assets: List[str]):
+    def register_bandprocessing_hook(self, hook, band_assets: List[str] = None):
         """
         Register a hook function to adjust a band.
         Args:
@@ -122,7 +122,6 @@ class STACDownloader:
         output_folder: str,
         extension: str = "tif",
     ):
-        self.logger.info(extension)
         f_name = f"{item.id}_{asset_name}{'_' + str(resolution) + 'm' if resolution is not None else ''}.{extension}"
         out_path = os.path.join(output_folder, f_name)
         return out_path
@@ -137,15 +136,11 @@ class STACDownloader:
                     raise ValueError(f"Asset '{file_asset}' not found in item.")
 
                 file_url = item.assets[file_asset].href
-                self.logger.info(file_url)
                 ext = os.path.splitext(file_url)[-1].lstrip(".")
-                self.logger.info(ext)
                 ext = ext.split('?')[0] # Removing signing key
-                self.logger.info(ext)
                 file_out_path = self._get_file_output_path(
                     item, file_asset, None, output_folder, extension=ext
                 )
-                self.logger.info(file_out_path)
                 try:
                     download_file(file_url, file_out_path, overwrite=True)
                 except Exception as e:
@@ -205,7 +200,7 @@ class STACDownloader:
                         raster_url, resolution, resampling_method
                     )
 
-                    processed_raster, processed_profile = self._process_band(processed_raster, resampled_profile, item, raster_asset)
+                    processed_raster, processed_profile = self._process_band(resampled_raster, resampled_profile, item, raster_asset)
 
                     # Apply mask if provided
                     if mask is not None:
