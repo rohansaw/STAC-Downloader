@@ -206,10 +206,11 @@ class STACDownloader:
                     if mask is not None:
                         nodata_value = processed_profile["nodata"]
                         if nodata_value is None:
-                            raise Exception(
+                            self.logger.warning(
                                 f"Raster asset '{raster_asset}' does not have \
-                                  a defined nodata value, which is required to apply a mask."
+                                  a defined nodata value. Using 0. "
                             )
+                            nodata_value = 0
 
                         processed_raster = apply_mask(
                             processed_raster, mask, nodata_value
