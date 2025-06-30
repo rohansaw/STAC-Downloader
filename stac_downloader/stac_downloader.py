@@ -207,8 +207,7 @@ class STACDownloader:
                         nodata_value = processed_profile["nodata"]
                         if nodata_value is None:
                             self.logger.warning(
-                                f"Raster asset '{raster_asset}' does not have \
-                                  a defined nodata value. Using 0. "
+                                f"Raster asset '{raster_asset}' does not have a defined nodata value. Using 0."
                             )
                             nodata_value = 0
 
@@ -406,70 +405,16 @@ class STACDownloader:
 
         return vrt_path, file_asset_paths, band_paths, band_names_ordered
 
-    def _cleanup_failed_job_artifacts(
-        self,
-        item: pyStacItem,
-        raster_assets: List[str],
-        file_assets: List[str],
-        output_folder: str,
-        resolution: float,
-        save_mask_as_band: bool,
-    ):
-        possible_outputs = []
-        for raster_asset in raster_assets:
-            possible_outputs.append(
-                self._get_file_output_path(
-                    item, raster_asset, resolution, output_folder
-                )
-            )
-
-        for file_asset in file_assets:
-            ext = os.path.splitext(item.assets[file_asset].href)[-1].lstrip(".")
-            ext = ext.split("?")[0]
-            possible_outputs.append(
-                self._get_file_output_path(
-                    item, file_asset, None, output_folder, extension=ext
-                )
-            )
-
-        if save_mask_as_band:
-            possible_outputs.append(
-                self._get_file_output_path(item, "mask", resolution, output_folder)
-            )
-
-        possible_outputs.append()
-
-        for output_path in possible_outputs:
-            if os.path.exists(output_path):
-                self.logger.warning(f"Cleaning up failed job artifact: {output_path}")
-                os.remove(output_path)
-
     def _execution_wrapper(self, kwargs_dict):
         try:
             return self.download_item(**kwargs_dict)
         except KeyboardInterrupt:
-            self._cleanup_failed_job_artifacts(
-                item=kwargs_dict["item"],
-                raster_assets=kwargs_dict["raster_assets"],
-                file_assets=kwargs_dict["file_assets"],
-                output_folder=kwargs_dict["output_folder"],
-                resolution=kwargs_dict["resolution"],
-                save_mask_as_band=kwargs_dict["save_mask_as_band"],
-            )
             raise KeyboardInterrupt("Download interrupted by user.")
         except Exception as e:
             item_id = (
                 kwargs_dict.get("item", {}).id
                 if kwargs_dict.get("item") and hasattr(kwargs_dict.get("item"), "id")
                 else "unknown"
-            )
-            self._cleanup_failed_job_artifacts(
-                item=kwargs_dict["item"],
-                raster_assets=kwargs_dict["raster_assets"],
-                file_assets=kwargs_dict["file_assets"],
-                output_folder=kwargs_dict["output_folder"],
-                resolution=kwargs_dict["resolution"],
-                save_mask_as_band=kwargs_dict["save_mask_as_band"],
             )
             raise type(e)(f"Error processing item {item_id}: {str(e)}") from e
 
