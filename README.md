@@ -32,7 +32,7 @@ Options:
   --max-cloud-cover INTEGER       Maximum cloud cover % to filter on. Only available
                                   if eo filter parameter is availble in STAC catalog.
                                   [default: 60]
-  --geometry-path FILE            GeoJSON file with search geometry
+  --geometry-path FILE            GeoJSON file with search geometry. Must be in EPSG:4326.
                                   [required]
   --start-date TEXT               Search start date (YYYY-MM-DD)  [required]
   --end-date TEXT                 Search end date (YYYY-MM-DD)  [required]

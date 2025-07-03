@@ -78,11 +78,9 @@ stac_downloader.register_bandprocessing_hook(s2_harmonization_processor, band_as
 # Query the STAC catalog
 logger.info(f"Searching for items from {START_DATE} to {END_DATE}...")
 t0 = time.time()
-
 gdf = gpd.read_file(GEOMETRY_PATH)
 gdf = gdf.to_crs(epsg=4326)
 geometry = gdf.geometry.values[0] if GEOMETRY_PATH else None
-
 items = stac_downloader.query_catalog(
     collection_name=STAC_COLLECTION_NAME,
     start_date=START_DATE,
