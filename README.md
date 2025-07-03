@@ -51,7 +51,7 @@ Options:
 
 The `STAC Downloader` is designed to be generic for different `STAC` catalogs and processing options. Therefore, importing the package provides you with more flexibility for custom processing through the setup of custom hooks. The available hook attachment points are the following:
 - `masking_hook`: Created a mask from `mask_bands` that will be used for masking all other raster bands.
-- `band_processing_hoosk`: Not yet implemented. This will allow processing bands individually with the provided function.
+- `band_processing_hoosk`: This allows processing bands individually with a provided function (e.g adding a offset or specific bands etc.).
 - `post_download_hooks`: Allows running any form of e.g bandcombination, creation of additional bands etc after all raster bands have been downloaded .
 
 ```python
