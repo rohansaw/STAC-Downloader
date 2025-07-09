@@ -492,7 +492,7 @@ class STACDownloader:
 
             except KeyboardInterrupt:
                 self.logger.error("\nInterrupted by user. Terminating workers...")
-                pool.close()
+                pool.terminate()
                 pool.join()
                 raise KeyboardInterrupt("Download interrupted by user.")
             except Exception as e:
