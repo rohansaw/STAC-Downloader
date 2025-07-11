@@ -9,8 +9,8 @@ from stac_downloader.stac_downloader import STACDownloader
 from stac_downloader.utils import get_logger, prepare_geometry
 
 # ##################################################################################
-# Sentiel-2 L2A Collection-1 Downloader Example.
-# Concrete implementation of the STAC downloader for Sentinel-2 L2A Collection-1 data.
+# Sentiel-2 Downloader Example.
+# Concrete implementation of the STAC downloader for Sentinel-2 data.
 # ##################################################################################
 # Downloads Sentinel-2 Level 2A Collection 1 data from the AWS STAC catalog.
 # ATTENTION: This data has all be processed with baseline >= 5.0.
