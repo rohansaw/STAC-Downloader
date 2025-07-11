@@ -5,6 +5,9 @@ import subprocess
 import colorlog
 import time
 
+import geopandas as gpd
+from shapely import make_valid
+
 
 def get_logger():
     formatter = colorlog.ColoredFormatter(
@@ -48,3 +51,23 @@ def run_subprocess(cmd: list, step_desc: str, logger):
 
 def persist_file(temp_path, target_path):
     shutil.move(temp_path, target_path)
+
+def prepare_geometry(gdf: gpd.GeoDataFrame, enveloped=False):
+    """Prepares a geodataframe for a STAC API request,
+    by projecting to EPSG:4326, making valid and creating union.
+
+    If enveloped = True, will create a bounding box for every geometry, 
+    which helps in reducing size for smaller requests.
+    """
+    gdf = gdf.to_crs(epsg=4326)
+    gdf["geometry"] = gdf["geometry"].apply(lambda geom: make_valid(geom) if not geom.is_valid else geom)
+    geoms = gdf.geometry
+
+    # Create bounding box for every polygons to size
+    if enveloped:
+        geoms = geoms.envelope
+
+    geometry = geoms.union_all()
+
+    return geometry
+

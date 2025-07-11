@@ -6,15 +6,15 @@ from sentinel2_hooks import add_geometry_bands, build_s2_masking_hook
 
 from stac_downloader.raster_processing import ResamplingMethod
 from stac_downloader.stac_downloader import STACDownloader
-from stac_downloader.utils import get_logger
+from stac_downloader.utils import get_logger, prepare_geometry
 
 # ##################################################################################
-# Sentiel-2 Downloader Example.
-# Concrete implementation of the STAC downloader for Sentinel-2 data.
+# Sentiel-2 L2A Collection-1 Downloader Example.
+# Concrete implementation of the STAC downloader for Sentinel-2 L2A Collection-1 data.
 # ##################################################################################
 # Downloads Sentinel-2 Level 2A Collection 1 data from the AWS STAC catalog.
 # ATTENTION: This data has all be processed with baseline >= 5.0.
-# Therefore all data has a shift of 1000 in the reflectance bands.
+# Therefore all data has a shift of +1000 in the reflectance bands.
 #
 # This example shows how to download Sentinel-2 data from the AWS STAC catalog.
 # It applies a mask based on the SCL layer and cloud/snow masks from S2 Cloudless.
@@ -73,16 +73,27 @@ logger.info(f"Searching for items from {START_DATE} to {END_DATE}...")
 t0 = time.time()
 
 gdf = gpd.read_file(GEOMETRY_PATH)
-gdf = gdf.to_crs(epsg=4326)
-geometry = gdf.geometry.values[0] if GEOMETRY_PATH else None
-
-items = stac_downloader.query_catalog(
-    collection_name=STAC_COLLECTION_NAME,
-    start_date=START_DATE,
-    end_date=END_DATE,
-    geometry=geometry,
-    query={"eo:cloud_cover": {"lt": MAX_CLOUD_COVER}},
-)
+try:
+    geometry = prepare_geometry(gdf)
+    items = stac_downloader.query_catalog(
+        collection_name=STAC_COLLECTION_NAME,
+        start_date=START_DATE,
+        end_date=END_DATE,
+        geometry=geometry,
+        query={"eo:cloud_cover": {"lt": MAX_CLOUD_COVER}},
+    )
+except Exception as e:
+    # Try using bounding boxes instead of exact polygon to reduce size.
+    # This is a typical reason why the requests fails.
+    geometry = prepare_geometry(gdf, enveloped=True)
+    items = stac_downloader.query_catalog(
+        collection_name=STAC_COLLECTION_NAME,
+        start_date=START_DATE,
+        end_date=END_DATE,
+        geometry=geometry,
+        query={"eo:cloud_cover": {"lt": MAX_CLOUD_COVER}},
+    )
+    
 logger.info(f"Found {len(items)} items")
 logger.info(f"Search took {time.time() - t0:.2f} seconds")
 

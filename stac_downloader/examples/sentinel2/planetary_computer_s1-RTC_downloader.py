@@ -1,27 +1,24 @@
+from datetime import datetime
 import os
 import time
 
 import geopandas as gpd
+import pandas as pd
 from sentinel2_hooks import build_geometry_band_adder, build_s2_masking_hook, s2_harmonization_processor
 import planetary_computer
 
 from stac_downloader.raster_processing import ResamplingMethod
 from stac_downloader.stac_downloader import STACDownloader
-from stac_downloader.utils import get_logger
+from stac_downloader.utils import get_logger, prepare_geometry
 
 # ##################################################################################
-# Sentiel-2 Downloader Example.
-# Concrete implementation of the STAC downloader for Sentinel-2 data from 
+# Sentiel-1 RTC Downloader Example.
+# Concrete implementation of the STAC downloader for Sentinel-1 RTC data from 
 # Microsoft Planetary Computer.
 # ##################################################################################
-# Downloads Sentinel-2 Level 2A data from Microsofts Planetary Computer.
-# ATTENTION: Data will be harmonized to Processing Baseline 5. This means that all
-# data before 25.01.2022 will be shifted by +1000 to match the Baseline 5 data.
+# Downloads Sentinel-1 Radiometrically Terrain Corrected data from Microsofts Planetary Computer.
 #
-# This example applies the SCL layer for cloud masking and shows how to apply
-# custom bandwise processing functions
 ####################################################################################
-
 
 logger = get_logger()
 
@@ -58,6 +55,29 @@ SCL_BANDNAME = 'SCL' # SCL Bandname
 
 MODIFIER = planetary_computer.sign_inplace # Required from MPC
 
+# Define deduplication helper
+def dedupliate(items):
+    item_entries = [
+        {
+            'mgrs_tile_id': item.id.split('_')[4],
+            'date': datetime.strptime(item.id.split('_')[2], "%Y%m%dT%H%M%S").date(),
+            'processing_date':  datetime.strptime(item.id.split('_')[5], "%Y%m%dT%H%M%S"),
+            'item': item,
+            'invalid_formatting': len(item.id.split('_')[3]) != 4 or item.id.split('_')[3][0] != 'R'
+        } for item in items
+    ]
+
+    df = pd.DataFrame(item_entries)
+
+    if df['invalid_formatting'].any():
+        first_invalid = df[df['invalid_formatting'] == True].iloc[0]
+        raise Exception(f"Can't deduplicate due to unexpected item id formatting. Expecting id like S2B_MSIL2A_20230413T105619_R094_T31UDP_20240829T164929. Got {first_invalid['item'].id}.")
+
+    # Group by tile_id and acuqisition data. Sort by processing date within group and only keep newest.
+    df_grouped = df.sort_values("processing_date").groupby(['mgrs_tile_id', 'date']).tail(1)
+
+    return df_grouped['item'].to_list()
+
 # Setup STAC Downloader
 stac_downloader = STACDownloader(catalog_url=STACK_CATALOG_URL, logger=logger, stac_catalog_modifier=MODIFIER)
 
@@ -80,20 +100,29 @@ logger.info(f"Searching for items from {START_DATE} to {END_DATE}...")
 t0 = time.time()
 
 gdf = gpd.read_file(GEOMETRY_PATH)
-gdf = gdf.to_crs(epsg=4326)
 
-if len(gdf.geometry.values) != 1:
-    raise ValueError('Geometry must have exactly one entry.')
+try:
+    geometry = prepare_geometry(gdf)
+    items = stac_downloader.query_catalog(
+        collection_name=STAC_COLLECTION_NAME,
+        start_date=START_DATE,
+        end_date=END_DATE,
+        geometry=geometry,
+        query={"eo:cloud_cover": {"lt": MAX_CLOUD_COVER}},
+    )
+except Exception as e:
+    # Try using bounding boxes instead of exact polygon to reduce size.
+    # This is a typical reason why the requests fails.
+    geometry = prepare_geometry(gdf, enveloped=True)
+    items = stac_downloader.query_catalog(
+        collection_name=STAC_COLLECTION_NAME,
+        start_date=START_DATE,
+        end_date=END_DATE,
+        geometry=geometry,
+        query={"eo:cloud_cover": {"lt": MAX_CLOUD_COVER}},
+    )
 
-geometry = gdf.geometry.values[0] if GEOMETRY_PATH else None
 
-items = stac_downloader.query_catalog(
-    collection_name=STAC_COLLECTION_NAME,
-    start_date=START_DATE,
-    end_date=END_DATE,
-    geometry=geometry,
-    query={"eo:cloud_cover": {"lt": MAX_CLOUD_COVER}},
-)
 logger.info(f"Found {len(items)} items")
 logger.info(f"Search took {time.time() - t0:.2f} seconds")
 
