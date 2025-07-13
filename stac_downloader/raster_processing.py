@@ -25,11 +25,6 @@ class ResamplingMethod(Enum):
             raise ValueError(f"Invalid resampling method: {method_str}")
 
 
-# Using retry since we are sometimes reading from remote filesystems (e.g. S3) and they can be flaky.
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-)
 def resample_raster(
     raster_path: str, target_resolution: float, resampling_method: ResamplingMethod
 ):

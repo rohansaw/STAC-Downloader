@@ -7,6 +7,7 @@ import numpy as np
 from pystac.item import Item as pyStacItem
 from pystac_client import Client as pyStacClient
 from rasterio import Env
+from tenacity import retry, stop_after_attempt, wait_exponential
 from tqdm import tqdm
 
 from stac_downloader.downloading import download_file
@@ -351,7 +352,11 @@ class STACDownloader:
         
         return item
         
-
+    # Using retry since we are sometimes reading from remote filesystems (e.g. S3) and they can be flaky.
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+    )
     def download_item(
         self,
         item: pyStacItem,
@@ -364,7 +369,7 @@ class STACDownloader:
         save_mask_as_band: bool,
     ) -> Tuple[str, Dict[str, str]]:
         
-        # Step 0: Modify an item. E.g used to sign an item
+        # Step 0: Modify an item. Typically used to sign an item
         item = self._modify_item(item)
 
         # Step 1: Download Metadata / Files that are not processed as rasters
