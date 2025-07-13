@@ -22,15 +22,15 @@ from stac_downloader.utils import get_logger, run_subprocess
 
 
 class STACDownloader:
-    def __init__(self, catalog_url=None, logger=None, stac_catalog_modifier=None):
+    def __init__(self, catalog_url=None, logger=None, stac_item_modifier=None):
 
         if logger is None:
             logger = get_logger()
 
-        self.stac_catalog_modifier = stac_catalog_modifier 
+        self.stac_item_modifier = stac_item_modifier 
 
         self.logger = logger
-        self.catalog = pyStacClient.open(catalog_url, modifier=stac_catalog_modifier) if catalog_url else None
+        self.catalog = pyStacClient.open(catalog_url) if catalog_url else None
         self.masking_hook = None
         self.bandprocessing_hooks = defaultdict(list)
         self.postdownload_hooks = []
@@ -85,7 +85,7 @@ class STACDownloader:
         modifier=None,
         **kwargs,
     ) -> List[pyStacItem]:
-        modifier = modifier if modifier else self.stac_catalog_modifier
+        modifier = modifier if modifier else self.stac_item_modifier
         if catalog_url:
             catalog = pyStacClient.open(catalog_url, modifier=modifier)
         else:
@@ -344,6 +344,13 @@ class STACDownloader:
             output_folder,
             f"{item.id}_{resolution}m_{item.datetime.strftime('%Y-%m-%d')}.vrt",
         )
+    
+    def _modify_item(self, item):
+        if self.stac_item_modifier:
+            item =  self.stac_item_modifier(item)
+        
+        return item
+        
 
     def download_item(
         self,
@@ -356,6 +363,10 @@ class STACDownloader:
         resampling_method: ResamplingMethod,
         save_mask_as_band: bool,
     ) -> Tuple[str, Dict[str, str]]:
+        
+        # Step 0: Modify an item. E.g used to sign an item
+        item = self._modify_item(item)
+
         # Step 1: Download Metadata / Files that are not processed as rasters
         file_asset_paths = self._download_file_assets(item, file_assets, output_folder)
 

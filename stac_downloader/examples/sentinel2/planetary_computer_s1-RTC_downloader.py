@@ -35,10 +35,10 @@ OVERWRITE = False  # Set to True to overwrite existing files
 RESAMPLING_METHOD = ResamplingMethod.NEAREST  # Resampling method for raster assets
 NUM_WORKERS = 16  # Number of parallel workers for downloading
 
-MODIFIER = planetary_computer.sign_inplace # Required from MPC
+MODIFIER = planetary_computer.sign # Required from MPC
 
 # Setup STAC Downloader
-stac_downloader = STACDownloader(catalog_url=STACK_CATALOG_URL, logger=logger, stac_catalog_modifier=MODIFIER)
+stac_downloader = STACDownloader(catalog_url=STACK_CATALOG_URL, logger=logger, stac_item_modifier=MODIFIER)
 
 # Query the STAC catalog
 logger.info(f"Searching for items from {START_DATE} to {END_DATE}...")

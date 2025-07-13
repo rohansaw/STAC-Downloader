@@ -60,7 +60,7 @@ NUM_WORKERS = 16  # Number of parallel workers for downloading
 SCL_KEEP_CLASSES = [4, 5] # Class Values that should be kept from SCL Mask. All others are set to nodata
 SCL_BANDNAME = 'SCL' # SCL Bandname
 
-MODIFIER = planetary_computer.sign_inplace # Required from MPC
+MODIFIER = planetary_computer.sign # Required from MPC
 
 # Define deduplication helper
 def dedupliate(items):
@@ -86,7 +86,7 @@ def dedupliate(items):
     return df_grouped['item'].to_list()
 
 # Setup STAC Downloader
-stac_downloader = STACDownloader(catalog_url=STACK_CATALOG_URL, logger=logger, stac_catalog_modifier=MODIFIER)
+stac_downloader = STACDownloader(catalog_url=STACK_CATALOG_URL, logger=logger, stac_item_modifier=MODIFIER)
 
 # Register masking hook based on SCL & Cloud Probs with a threshold for cloud and snow
 s2_masking_hook = build_s2_masking_hook(
