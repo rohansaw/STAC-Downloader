@@ -133,7 +133,7 @@ def create_geometry_bands(
 MODIFIER = planetary_computer.sign # Required from MPC
 
 # Setup STAC Downloader
-stac_downloader = STACDownloader(catalog_url=STACK_CATALOG_URL, logger=logger, stac_item_modifier=MODIFIER, raster_asset_target_dtypes=RASTER_BAND_DTYPES)
+stac_downloader = STACDownloader(catalog_url=STACK_CATALOG_URL, logger=logger, stac_item_modifier=MODIFIER)
 stac_downloader.register_masking_hook(build_snow_clouds_mask)
 stac_downloader.register_postdownload_hook(create_geometry_bands)
 
@@ -180,6 +180,7 @@ downloaded_item_paths = stac_downloader.download_items(
     resolution=RESOLUTION,
     resampling_method=RESAMPLING_METHOD,
     num_workers=NUM_WORKERS,
+    raster_asset_target_dtypes=RASTER_BAND_DTYPES
 )
 
 logger.info(f"Downloads saved under {OUTPUT_FOLDER}.")

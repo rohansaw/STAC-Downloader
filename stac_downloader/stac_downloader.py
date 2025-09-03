@@ -23,14 +23,12 @@ from stac_downloader.utils import get_logger, run_subprocess
 
 
 class STACDownloader:
-    def __init__(self, catalog_url=None, logger=None, stac_item_modifier=None, raster_asset_target_dtypes=None):
+    def __init__(self, catalog_url=None, logger=None, stac_item_modifier=None):
 
         if logger is None:
             logger = get_logger()
 
         self.stac_item_modifier = stac_item_modifier 
-
-        self.raster_asset_target_dtypes = raster_asset_target_dtypes
 
         self.logger = logger
         self.catalog = pyStacClient.open(catalog_url) if catalog_url else None
@@ -175,6 +173,7 @@ class STACDownloader:
         resolution: float,
         resampling_method: ResamplingMethod,
         mask=None,
+        raster_asset_target_dtypes: Dict[str: Any] = None
     ):
         download_paths = {}
 
@@ -227,6 +226,7 @@ class STACDownloader:
                         raster_asset,
                         resolution,
                         output_folder,
+                        raster_asset_target_dtypes
                     )
                 except Exception as e:
                     # Cleanup if download failed to avoid corrupted files
@@ -248,17 +248,18 @@ class STACDownloader:
         asset_name: str,
         resolution: float,
         output_folder: str,
+        raster_asset_target_dtypes: Dict[str, Any]
     ):
         raster_out_path = self._get_file_output_path(
             item, asset_name, resolution, output_folder
         )
         try:
 
-            if not self.raster_asset_target_dtypes or not asset_name in self.raster_asset_target_dtypes:
+            if not raster_asset_target_dtypes or not asset_name in raster_asset_target_dtypes:
                 self.logger.warning("No dtype specified. Falling back to int16")
                 dtype = np.int16
             else:
-                dtype = self.raster_asset_target_dtypes[asset_name]
+                dtype = raster_asset_target_dtypes[asset_name]
             save_band(raster, profile, raster_out_path, asset_name, dtype)
         except Exception as e:
             raise Exception(
@@ -377,6 +378,7 @@ class STACDownloader:
         resolution: float,
         resampling_method: ResamplingMethod,
         save_mask_as_band: bool,
+        raster_asset_target_dtypes: Dict[str, Any]
     ) -> Tuple[str, Dict[str, str]]:
         
         # Step 0: Modify an item. Typically used to sign an item
@@ -387,20 +389,20 @@ class STACDownloader:
 
         # Step 2: Download maskbands and build mask. This is done before downloading other bands, to reuse.
         mask, mask_metadata = self._create_mask_from_assets(
-            item, mask_assets, resolution, resampling_method
+            item, mask_assets, resolution, resampling_method,
         )
 
         # Step 3: Download rasters, resample, bandprocess
         self.logger.info("Downloading band data and resampling...")
         band_paths = self._download_raster_assets(
-            item, raster_assets, output_folder, resolution, resampling_method, mask=mask
+            item, raster_assets, output_folder, resolution, resampling_method, mask=mask, raster_asset_target_dtypes=raster_asset_target_dtypes
         )
         band_names_ordered = raster_assets
 
         # Add mask band if requested
         if save_mask_as_band:
             mask_band_path = self._save_band(
-                mask, mask_metadata, item, "mask", resolution, output_folder
+                mask, mask_metadata, item, "mask", resolution, output_folder, raster_asset_target_dtypes
             )
             band_paths["mask"] = mask_band_path
             band_names_ordered.append("mask")
@@ -476,6 +478,7 @@ class STACDownloader:
         resampling_method: ResamplingMethod,
         save_mask_as_band: bool = False,
         num_workers: int = 1,
+        raster_asset_target_dtypes: Dict[str, Any] = None
     ):
         # Filter items by checkig it output already exists
         if os.path.exists(output_folder):
@@ -500,6 +503,7 @@ class STACDownloader:
                 "resolution": resolution,
                 "resampling_method": resampling_method,
                 "save_mask_as_band": save_mask_as_band,
+                "raster_asset_target_dtypes": raster_asset_target_dtypes
             }
             for item in items
         ]
