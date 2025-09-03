@@ -1,10 +1,7 @@
-from datetime import datetime
 import os
 import time
 
 import geopandas as gpd
-import pandas as pd
-from sentinel2_hooks import build_geometry_band_adder, build_s2_masking_hook, s2_harmonization_processor
 import planetary_computer
 
 from stac_downloader.raster_processing import ResamplingMethod
@@ -17,6 +14,7 @@ from stac_downloader.utils import get_logger, prepare_geometry
 # Microsoft Planetary Computer.
 # ##################################################################################
 # Downloads Sentinel-1 Radiometrically Terrain Corrected data from Microsofts Planetary Computer.
+# Values are Backscatter in Decibel
 #
 ####################################################################################
 
@@ -25,7 +23,7 @@ logger = get_logger()
 # Define MPC-Specific Params
 STACK_CATALOG_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
 STAC_COLLECTION_NAME = "sentinel-1-rtc"
-RASTER_ASSETS = ["hh", "hv", "vh","vv"]
+RASTER_ASSETS = ["vv", "vh"]
 GEOMETRY_PATH = "/home/rohan/nasa-harvest/vercye/data/Ukraine/poltava_hull.geojson"
 RESOLUTION = 10  # Resolution in meters
 START_DATE = "2023-01-01"
@@ -33,7 +31,7 @@ END_DATE = "2023-01-05"
 OUTPUT_FOLDER = "/home/rohan/Downloads/sentinel1_downloads"
 OVERWRITE = False  # Set to True to overwrite existing files
 RESAMPLING_METHOD = ResamplingMethod.NEAREST  # Resampling method for raster assets
-NUM_WORKERS = 16  # Number of parallel workers for downloading
+NUM_WORKERS = 1  # Number of parallel workers for downloading
 
 MODIFIER = planetary_computer.sign # Required from MPC
 
@@ -64,8 +62,6 @@ except Exception as e:
         end_date=END_DATE,
         geometry=geometry,
     )
-
-print(items[0].assets.keys())
 
 logger.info(f"Found {len(items)} items")
 logger.info(f"Search took {time.time() - t0:.2f} seconds")

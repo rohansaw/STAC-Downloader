@@ -12,7 +12,9 @@ First identify your STAC catalog's URL and examine which assets you are interest
 
 **Option 1: Command Line Interface (CLI)**
 
-The CLI provides a download utility for STAC data with __reduced functionality__. It does not allow directly appplying a mask nor setting custom functions to process the downloaded imagery directly. However, it might come in handy if you just want to download metadata and imagery and resample imagery to a common resolution.
+The CLI provides a download utility for STAC data with __reduced functionality__. It does not allow directly appplying a mask nor setting custom functions to process the downloaded imagery directly. However, it might come in handy if you just want to download metadata and imagery and resample imagery to a common resolution. 
+
+IMPORTANT NOTE: If not specified differently all bands are currently saved as int16! Use the Option 2 to specify band dtypes.
 
 ```bash
 Usage: stac_downloader [OPTIONS]
@@ -111,8 +113,12 @@ downloaded_item_paths = stac_downloader.download_items(
     resolution=RESOLUTION,
     resampling_method=RESAMPLING_METHOD,
     num_workers=NUM_WORKERS,
+    raster_asset_target_dtypes=RASTER_ASSET_TARGET_DTYPES
 )
+
+# RASTER_ASSET_TARGET_DTYPES: Dict[str, Any]: allows specifying the dtype per raster asset. If no type is specified will use int16!
+# To specify a dtype for the Maskband use "mask" as the key!
 
 ```
 
-Head over to the examples section (`stac_downloader/examples`) to see how to fetch & process Sentinel-2 imagery, with sun angles and masking.
+Head over to the examples section (`stac_downloader/examples`) to see how to fetch & process Sentinel-2 imagery, with sun angles and masking. If you want to explore the examples, make sure to install the additional requirements under `stac_downloader/examples/requirements.txt`.

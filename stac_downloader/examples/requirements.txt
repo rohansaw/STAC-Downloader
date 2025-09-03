@@ -1,0 +1,3 @@
+colorlog
+geopandas
+planetary-computer

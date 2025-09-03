@@ -7,7 +7,8 @@ import tempfile
 import numpy as np
 import rasterio as rio
 from rasterio.warp import Resampling, calculate_default_transform, reproject
-from tenacity import retry, stop_after_attempt, wait_exponential
+from rasterio.transform import from_gcps
+
 
 from stac_downloader.utils import persist_file
 
@@ -35,14 +36,25 @@ def resample_raster(
             )
 
         raster = src.read(1)  # Read the first band
-        src_bounds = src.bounds
         src_resolution = src.res
         src_width = src.width
         src_height = src.height
-        src_crs = src.crs
         src_dtype = src.dtypes[0]
-        src_transform = src.transform
         profile = src.profile.copy()
+
+        if src.crs is not None:
+            # Normal case
+            src_crs = src.crs
+            src_transform = src.transform
+        else:
+            # Fallback: use GCPs
+            gcps, gcp_crs = src.gcps
+            if not gcps:
+                raise ValueError("Raster has neither CRS nor GCPs — cannot georeference.")
+            src_crs = gcp_crs
+            src_transform = from_gcps(gcps)
+        
+        src_bounds = rio.transform.array_bounds(src_height, src_width, src_transform)
 
     if resampling_method == ResamplingMethod.NEAREST:
         rio_resampling_method = Resampling.nearest
@@ -84,7 +96,7 @@ def resample_raster(
         return raster, profile
 
 
-def save_band(raster, profile, output_path, band_name):
+def save_band(raster, profile, output_path, band_name, dtype):
     profile.update(
         {
             "driver": "GTiff",
@@ -92,7 +104,7 @@ def save_band(raster, profile, output_path, band_name):
             "tiled": True,
             "blockxsize": 256,
             "blockysize": 256,
-            "dtype": np.int16,  # Forcing to Int16 for now
+            "dtype": dtype
         }
     )
 

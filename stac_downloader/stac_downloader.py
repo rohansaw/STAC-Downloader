@@ -1,7 +1,7 @@
 from collections import defaultdict
 import multiprocessing
 import os
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 from pystac.item import Item as pyStacItem
@@ -23,12 +23,14 @@ from stac_downloader.utils import get_logger, run_subprocess
 
 
 class STACDownloader:
-    def __init__(self, catalog_url=None, logger=None, stac_item_modifier=None):
+    def __init__(self, catalog_url=None, logger=None, stac_item_modifier=None, raster_asset_target_dtypes=None):
 
         if logger is None:
             logger = get_logger()
 
         self.stac_item_modifier = stac_item_modifier 
+
+        self.raster_asset_target_dtypes = raster_asset_target_dtypes
 
         self.logger = logger
         self.catalog = pyStacClient.open(catalog_url) if catalog_url else None
@@ -47,6 +49,7 @@ class STACDownloader:
     def register_masking_hook(self, hook):
         """
         Register a hook function to create a mask from the mask ban.
+        
         The hook should take the downloaded mask bands (dict: name-> profile, mask)
         and return a binary mask as: profile, binary_mask.
         """
@@ -55,9 +58,10 @@ class STACDownloader:
 
         self.masking_hook = hook
 
-    def register_bandprocessing_hook(self, hook, band_assets: List[str] = None):
+    def register_bandprocessing_hook(self, hook, band_assets: List[str]):
         """
         Register a hook function to adjust a band.
+
         Args:
             hook (callable): The function to register. Must accept parameters: raster, profile, item.
             band_assets (List[str]): List of asset names that the hook should be applied to.
@@ -249,7 +253,13 @@ class STACDownloader:
             item, asset_name, resolution, output_folder
         )
         try:
-            save_band(raster, profile, raster_out_path, asset_name)
+
+            if not self.raster_asset_target_dtypes or not asset_name in self.raster_asset_target_dtypes:
+                self.logger.warning("No dtype specified. Falling back to int16")
+                dtype = np.int16
+            else:
+                dtype = self.raster_asset_target_dtypes[asset_name]
+            save_band(raster, profile, raster_out_path, asset_name, dtype)
         except Exception as e:
             raise Exception(
                 f"Failed to save band '{asset_name}' for item '{item.id}' at resolution {resolution}m. Error: {e}"
