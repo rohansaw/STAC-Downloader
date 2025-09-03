@@ -173,7 +173,7 @@ class STACDownloader:
         resolution: float,
         resampling_method: ResamplingMethod,
         mask=None,
-        raster_asset_target_dtypes: Dict[str: Any] = None
+        raster_asset_target_dtypes: Dict[str, Any] = None
     ):
         download_paths = {}
 
