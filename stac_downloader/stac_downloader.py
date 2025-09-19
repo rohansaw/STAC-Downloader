@@ -214,6 +214,7 @@ class STACDownloader:
                                 f"Raster asset '{raster_asset}' does not have a defined nodata value. Using 0."
                             )
                             nodata_value = 0
+                            processed_profile["nodata"] = 0
 
                         processed_raster = apply_mask(
                             processed_raster, mask, nodata_value
@@ -256,7 +257,7 @@ class STACDownloader:
         try:
 
             if not raster_asset_target_dtypes or not asset_name in raster_asset_target_dtypes:
-                self.logger.warning("No dtype specified. Falling back to int16")
+                self.logger.warning(f"No dtype specified for {asset_name}. Falling back to int16")
                 dtype = np.int16
             else:
                 dtype = raster_asset_target_dtypes[asset_name]
