@@ -22,7 +22,7 @@ logger = get_logger()
 
 # Define MPC-Specific Params
 STACK_CATALOG_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
-STAC_COLLECTION_NAME = "sentinel-1-rtc"
+STAC_COLLECTION_NAME = "sentinel-1-grd"
 RASTER_ASSETS = ["vv", "vh"]
 GEOMETRY_PATH = "/home/rohan/nasa-harvest/vercye/data/Ukraine/poltava_hull.geojson"
 RESOLUTION = 10  # Resolution in meters

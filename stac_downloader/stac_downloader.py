@@ -79,8 +79,8 @@ class STACDownloader:
     def query_catalog(
         self,
         collection_name: str,
-        start_date: str,
-        end_date: str,
+        start_date: str = None,
+        end_date: str = None,
         geometry=None,
         bbox=None,
         query=None,
@@ -103,10 +103,16 @@ class STACDownloader:
 
         search_params = {
             "collections": [collection_name],
-            "datetime": f"{start_date}/{end_date}",
             "query": query,
             **kwargs,
         }
+
+        if (start_date and not end_date) or (end_date and not start_date):
+            raise ValueError("Currently requiring both start and end date in query if one is set.")
+
+        if start_date and end_date:
+            search_params["datetime"] = f"{start_date}/{end_date}"
+
 
         if geometry is not None:
             search_params["intersects"] = geometry
@@ -421,16 +427,19 @@ class STACDownloader:
         )
 
         # Step 5: Combine bands into a vrt (or GTiff if requested)
-        self.logger.info(f"Combining bands into single file for tile {item.id}...")
-        vrt_path = self._get_vrt_output_path(item, resolution, output_folder)
+        if len(raster_assets) > 0:
+            self.logger.info(f"Combining bands into single file for tile {item.id}...")
+            vrt_path = self._get_vrt_output_path(item, resolution, output_folder)
 
-        try:
-            vrt_path = build_bandstacked_vrt(vrt_path, band_paths, band_names_ordered)
-        except Exception as e:
-            self.logger.error(f"Failed to build VRT for item {item.id}: {e}")
-            if os.path.exists(vrt_path):
-                os.remove(vrt_path)
-            raise e
+            try:
+                vrt_path = build_bandstacked_vrt(vrt_path, band_paths, band_names_ordered)
+            except Exception as e:
+                self.logger.error(f"Failed to build VRT for item {item.id}: {e}")
+                if os.path.exists(vrt_path):
+                    os.remove(vrt_path)
+                raise e
+        else:
+            vrt_path = None
 
         return vrt_path, file_asset_paths, band_paths, band_names_ordered
 
