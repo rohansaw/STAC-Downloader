@@ -25,11 +25,9 @@ logger = get_logger()
 # Define MPC-Specific Params
 STACK_CATALOG_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
 STAC_COLLECTION_NAME = "cop-dem-glo-30"
-FILE_ASSETS = ["data"]
-RASTER_ASSETS=[]
+FILE_ASSETS = []
+RASTER_ASSETS=["data"]
 GEOMETRY_PATH = "/home/rohan/nasa-harvest/vercye/data/Ukraine/poltava_hull.geojson"
-# USING FILE ASSET ONLY - NO RESIZING RESOLUTION = 30  # Resolution in meters
-RESOLUTION = None
 OUTPUT_FOLDER = "/home/rohan/Downloads/copernicus_dem"
 OVERWRITE = False  # Set to True to overwrite existing files
 RESAMPLING_METHOD = ResamplingMethod.NEAREST  # Resampling method for raster assets
@@ -78,8 +76,8 @@ downloaded_item_paths = stac_downloader.download_items(
     mask_assets=[],
     output_folder=OUTPUT_FOLDER,
     overwrite=OVERWRITE,
-    resolution=RESOLUTION,
-    resampling_method=RESAMPLING_METHOD,
+    resolution=None, # DEM is in WGS84 - do not want to confuse the user to specify a resolution in m
+    resampling_spec=RESAMPLING_METHOD,
     num_workers=NUM_WORKERS,
     raster_asset_target_dtypes=RASTER_BAND_DTYPES
 )

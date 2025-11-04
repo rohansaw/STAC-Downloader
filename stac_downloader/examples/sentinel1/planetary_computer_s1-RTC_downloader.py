@@ -2,77 +2,56 @@ import os
 import time
 
 import geopandas as gpd
-from sentinel2_hooks import add_geometry_bands, build_s2_masking_hook
+import numpy as np
+import planetary_computer
 
 from stac_downloader.raster_processing import ResamplingMethod
 from stac_downloader.stac_downloader import STACDownloader
 from stac_downloader.utils import get_logger, prepare_geometry
 
 # ##################################################################################
-# Sentiel-2 Downloader Example.
-# Concrete implementation of the STAC downloader for Sentinel-2 data.
+# Sentiel-1 RTC Downloader Example.
+# Concrete implementation of the STAC downloader for Sentinel-1 RTC data from 
+# Microsoft Planetary Computer.
 # ##################################################################################
-# Downloads Sentinel-2 Level 2A Collection 1 data from the AWS STAC catalog.
-# ATTENTION: This data has all be processed with baseline >= 5.0.
-# Therefore all data has a shift of +1000 in the reflectance bands.
-#
-# This example shows how to download Sentinel-2 data from the AWS STAC catalog.
-# It applies a mask based on the SCL layer and cloud/snow masks from S2 Cloudless.
-# This example also shows how to apply custom bands from geometry angles in metdata
+# Downloads Sentinel-1 Radiometrically Terrain Corrected data from Microsofts Planetary Computer.
+# The data is terrain-corrected gamma naught values of a signal transmitted in one
+# polarization ("h" or "v") and received in another ("h" or "v").
 ####################################################################################
 
+raise NotImplementedError("This is not yet completely implemented")
 
 logger = get_logger()
 
-STACK_CATALOG_URL = "https://earth-search.aws.element84.com/v1"
-STAC_COLLECTION_NAME = "sentinel-2-c1-l2a"
-MASK_ASSETS = ["scl", "cloud", "snow"]
-
-RASTER_ASSETS = [
-    "green",
-    "red",
-    "rededge1",
-    "rededge2",
-    "rededge3",
-    "nir08",
-    "swir16",
-    "swir22",
-]
-FILE_ASSETS = [
-    "granule_metadata",
-]
-MAX_CLOUD_COVER = 60  # Maximum cloud cover percentage to filter items
+# Define MPC-Specific Params
+STACK_CATALOG_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
+STAC_COLLECTION_NAME = "sentinel-1-rtc"
+RASTER_ASSETS = ["vv", "vh"]
 GEOMETRY_PATH = "/home/rohan/nasa-harvest/vercye/data/Ukraine/poltava_hull.geojson"
-RESOLUTION = 20  # Resolution in meters
 START_DATE = "2023-01-01"
 END_DATE = "2023-01-05"
-OUTPUT_FOLDER = "/home/rohan/Downloads/sentinel2_c1_l2a_downloads"
+OUTPUT_FOLDER = "/home/rohan/Downloads/sentinel1_downloads2"
 OVERWRITE = False  # Set to True to overwrite existing files
 RESAMPLING_METHOD = ResamplingMethod.NEAREST  # Resampling method for raster assets
-NUM_WORKERS = 16  # Number of parallel workers for downloading
+NUM_WORKERS = 1  # Number of parallel workers for 
+RESOLUTION = 10
+RASTER_BAND_DTYPES = {
+    "vv": np.float32,
+    "vh": np.float32,
+}
 
-CLOUD_THRESH = 10  # Threshold for probability cloud mask in percent
-SNOWPROB_THRESH = 15  # Threshold for snow probability mask in percent
-SCL_KEEP_CLASSES = [4, 5]
+
+MODIFIER = planetary_computer.sign # Required from MPC
 
 # Setup STAC Downloader
-stac_downloader = STACDownloader(catalog_url=STACK_CATALOG_URL, logger=logger)
+stac_downloader = STACDownloader(catalog_url=STACK_CATALOG_URL, logger=logger, stac_item_modifier=MODIFIER)
 
-# Register masking hook based on SCL & Cloud Probs with a threshold for cloud and snow
-s2_masking_hook = build_s2_masking_hook(
-    cloud_thresh=CLOUD_THRESH,
-    snowprob_thresh=SNOWPROB_THRESH,
-    scl_keep_classes=SCL_KEEP_CLASSES,
-)
-stac_downloader.register_masking_hook(s2_masking_hook)
-
-# Register geometry bands hook to create bands adding cosines of angles from metadata
-stac_downloader.register_postdownload_hook(add_geometry_bands)
-
+# Query the STAC catalog
 logger.info(f"Searching for items from {START_DATE} to {END_DATE}...")
 t0 = time.time()
 
 gdf = gpd.read_file(GEOMETRY_PATH)
+
 try:
     geometry = prepare_geometry(gdf)
     items = stac_downloader.query_catalog(
@@ -80,7 +59,6 @@ try:
         start_date=START_DATE,
         end_date=END_DATE,
         geometry=geometry,
-        query={"eo:cloud_cover": {"lt": MAX_CLOUD_COVER}},
     )
 except Exception as e:
     # Try using bounding boxes instead of exact polygon to reduce size.
@@ -91,9 +69,8 @@ except Exception as e:
         start_date=START_DATE,
         end_date=END_DATE,
         geometry=geometry,
-        query={"eo:cloud_cover": {"lt": MAX_CLOUD_COVER}},
     )
-    
+
 logger.info(f"Found {len(items)} items")
 logger.info(f"Search took {time.time() - t0:.2f} seconds")
 
@@ -103,13 +80,14 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 downloaded_item_paths = stac_downloader.download_items(
     items=items,
     raster_assets=RASTER_ASSETS,
-    file_assets=FILE_ASSETS,
-    mask_assets=MASK_ASSETS,
+    file_assets=[],
+    mask_assets=[],
     output_folder=OUTPUT_FOLDER,
     overwrite=OVERWRITE,
     resolution=RESOLUTION,
     resampling_spec=RESAMPLING_METHOD,
     num_workers=NUM_WORKERS,
+    raster_asset_target_dtypes=RASTER_BAND_DTYPES
 )
 
 logger.info(f"Downloads saved under {OUTPUT_FOLDER}.")

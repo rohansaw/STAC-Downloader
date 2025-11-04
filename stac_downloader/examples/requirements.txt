@@ -1,3 +1,5 @@
 colorlog
 geopandas
 planetary-computer
+pyproj
+shapely

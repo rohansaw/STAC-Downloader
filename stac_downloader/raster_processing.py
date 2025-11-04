@@ -27,8 +27,10 @@ class ResamplingMethod(Enum):
 
 
 def resample_raster(
-    raster_path: str, target_resolution: float, resampling_method: ResamplingMethod
+    raster_path: str, target_resolution: float, resampling_method: ResamplingMethod, target_crs: str = None
 ):
+    """Resample/Reproject a raster (disk/remote path) in memory."""
+
     with rio.open(raster_path) as src:
         if src.count > 1:
             raise ValueError(
@@ -53,8 +55,12 @@ def resample_raster(
                 raise ValueError("Raster has neither CRS nor GCPs — cannot georeference.")
             src_crs = gcp_crs
             src_transform = from_gcps(gcps)
+            profile['crs'] = src_crs
         
         src_bounds = rio.transform.array_bounds(src_height, src_width, src_transform)
+
+    # create target CRS object if given
+    dst_crs = rio.crs.CRS.from_string(target_crs) if target_crs else src_crs
 
     if resampling_method == ResamplingMethod.NEAREST:
         rio_resampling_method = Resampling.nearest
@@ -62,11 +68,15 @@ def resample_raster(
         rio_resampling_method = Resampling.bilinear
     else:
         raise ValueError(f"Unsupported resampling method: {resampling_method}")
+    
+    # Check if need to reproject / resample or if already in required format
+    needs_resample = target_resolution and src_resolution != (target_resolution, target_resolution)
+    needs_reproject = dst_crs != src_crs
 
-    if src_resolution != (target_resolution, target_resolution):
+    if needs_resample or needs_reproject:
         dst_transform, dst_width, dst_height = calculate_default_transform(
             src_crs,
-            src_crs,
+            dst_crs,
             src_width,
             src_height,
             *src_bounds,
@@ -80,7 +90,7 @@ def resample_raster(
             src_transform=src_transform,
             src_crs=src_crs,
             dst_transform=dst_transform,
-            dst_crs=src_crs,
+            dst_crs=dst_crs,
             resampling=rio_resampling_method,
             num_threads=4,
         )
@@ -89,6 +99,7 @@ def resample_raster(
                 "height": resampled_raster.shape[0],
                 "width": resampled_raster.shape[1],
                 "transform": dst_transform,
+                "crs": dst_crs,
             }
         )
         return resampled_raster, profile
@@ -96,7 +107,8 @@ def resample_raster(
         return raster, profile
 
 
-def save_band(raster, profile, output_path, band_name, dtype):
+def save_band(raster: np.ndarray, profile, output_path: str, band_name: str, dtype):
+    """Save a raster to disk."""
     profile.update(
         {
             "driver": "GTiff",
@@ -130,6 +142,12 @@ def build_bandstacked_vrt(
     create_gtiff=False,
     blocksize=256,
 ):
+    """Create a VRT/tif from all provided rasters, with each raster being stacked as bands.
+
+    Uses the order of band_names for stacking.
+
+    Use create_gtiff to not only create a VRT, but also to materialize as a geotif.
+    """
     # Use order of band_names to create the VRT
     band_paths_ordered = [band_paths[band_name] for band_name in band_names]
 

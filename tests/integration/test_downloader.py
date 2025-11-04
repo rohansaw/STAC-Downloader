@@ -47,7 +47,10 @@ def patch_all(mock_raster_data):
         "stac_downloader.downloading.download_file",
     ), patch(
         "stac_downloader.raster_processing.resample_raster",
-        side_effect=lambda a, b, c, d, e: (a, b),
+        side_effect=lambda a=None, b=None, c=None, d=None, e=None, **kwargs: (
+            np.ones((2, 2), dtype=np.uint8),
+            {"nodata": 0},
+        ),
     ), patch(
         "stac_downloader.raster_processing.save_band",
     ), patch(
@@ -58,7 +61,7 @@ def patch_all(mock_raster_data):
         yield
 
 
-def fake_mask_hook(bands, resolution):
+def fake_mask_hook(bands):
     combined_mask = np.ones((2, 2), dtype=np.uint8)
     return {"nodata": 0}, combined_mask
 
@@ -75,7 +78,7 @@ def test_stac_downloader_integration(tmp_path, mock_stac_item, patch_all):
     from stac_downloader.stac_downloader import STACDownloader
 
     downloader = STACDownloader()
-    downloader.register_masking_hook(fake_mask_hook, ["mask"])
+    downloader.register_masking_hook(fake_mask_hook)
     downloader.register_postdownload_hook(fake_post_hook)
 
     output = downloader.download_items(
@@ -86,7 +89,7 @@ def test_stac_downloader_integration(tmp_path, mock_stac_item, patch_all):
         output_folder=str(tmp_path),
         overwrite=True,
         resolution=10,
-        resampling_method="nearest",
+        resampling_spec="nearest",
         save_mask_as_band=True,
         num_workers=1,
     )

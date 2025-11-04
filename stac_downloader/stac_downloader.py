@@ -1,6 +1,7 @@
 from collections import defaultdict
 import multiprocessing
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
@@ -177,9 +178,10 @@ class STACDownloader:
         raster_assets: List[str],
         output_folder: str,
         resolution: float,
-        resampling_method: ResamplingMethod,
+        resampling_spec: ResamplingMethod | Dict[str, ResamplingMethod],
         mask=None,
-        raster_asset_target_dtypes: Dict[str, Any] = None
+        raster_asset_target_dtypes: Dict[str, Any] = None,
+        target_crs: str = None
     ):
         download_paths = {}
 
@@ -206,8 +208,9 @@ class STACDownloader:
                     self.logger.info(
                         f"Fetching raster asset '{raster_asset}' from {raster_url} and resampling ..."
                     )
+                    resampling_method = self._get_band_resampling_method(resampling_spec, raster_asset)
                     resampled_raster, resampled_profile = resample_raster(
-                        raster_url, resolution, resampling_method
+                        raster_path=raster_url, target_resolution=resolution, resampling_method=resampling_method, target_crs=target_crs
                     )
 
                     processed_raster, processed_profile = self._process_band(resampled_raster, resampled_profile, item, raster_asset)
@@ -280,7 +283,8 @@ class STACDownloader:
         item: pyStacItem,
         mask_assets: List[str],
         resolution: float,
-        resampling_method: ResamplingMethod,
+        resampling_spec: ResamplingMethod | Dict[str, ResamplingMethod],
+        target_crs: str
     ):
         if mask_assets:
             if len(mask_assets) > 1 and self.masking_hook is None:
@@ -303,8 +307,9 @@ class STACDownloader:
                 )
 
                 # Resample the mask to the target resolution
+                resampling_method = self._get_band_resampling_method(resampling_spec, mask_asset)
                 resampled_mask, resampled_mask_profile = resample_raster(
-                    mask_url, resolution, resampling_method
+                    raster_path=mask_url, target_resolution=resolution, resampling_method=resampling_method, target_crs=target_crs
                 )
 
                 downloaded_maskbands[mask_asset] = (
@@ -369,7 +374,30 @@ class STACDownloader:
             item =  self.stac_item_modifier(item)
         
         return item
+    
+    def _get_band_resampling_method(self, resampling_spec: ResamplingMethod | Dict[str, ResamplingMethod], band_name: str) -> ResamplingMethod:
+        """Get resampling method for specific bands. If resampling_spec is a single value return this."""
+        if isinstance(resampling_spec, Dict):
+            resampling_method = resampling_spec.get(band_name)
+            if resampling_method is None:
+                raise ValueError("Using resampling method per band but no resampling method for 'mask' provided.")
+            return resampling_method
         
+        return resampling_spec
+    
+    def _get_job_status_path(self,item_id: str, resolution: float, output_dir: str) -> Path:
+        status_out_dir = Path(output_dir) / "completed_jobs"
+        status_out_dir.mkdir(parents=True, exist_ok=True)
+        res_str = f"{resolution:.3f}".rstrip("0").rstrip(".")
+        status_file = status_out_dir / f"{item_id}_{res_str}.completed"
+        return status_file
+
+    
+    def _write_job_completed(self, item_id: str, resolution: float, output_dir: str):
+        """Touch file on job completion."""
+        status_file = self._get_job_status_path(item_id, resolution, output_dir)
+        status_file.touch() 
+
     # Using retry since we are sometimes reading from remote filesystems (e.g. S3) and they can be flaky.
     @retry(
         stop=stop_after_attempt(3),
@@ -383,12 +411,14 @@ class STACDownloader:
         mask_assets: List[str],
         output_folder: str,
         resolution: float,
-        resampling_method: ResamplingMethod,
+        resampling_spec: ResamplingMethod | Dict[str, ResamplingMethod],
         save_mask_as_band: bool,
-        raster_asset_target_dtypes: Dict[str, Any]
+        raster_asset_target_dtypes: Dict[str, Any],
+        target_crs: str,
+        build_vrt: bool
     ) -> Tuple[str, Dict[str, str]]:
         
-        # Step 0: Modify an item. Typically used to sign an item
+        # Step 0: Modify an item. Typically used to sign an item (e.g for planetary computer)
         item = self._modify_item(item)
 
         # Step 1: Download Metadata / Files that are not processed as rasters
@@ -396,13 +426,13 @@ class STACDownloader:
 
         # Step 2: Download maskbands and build mask. This is done before downloading other bands, to reuse.
         mask, mask_metadata = self._create_mask_from_assets(
-            item, mask_assets, resolution, resampling_method,
+            item, mask_assets, resolution, resampling_spec, target_crs=target_crs
         )
 
         # Step 3: Download rasters, resample, bandprocess
         self.logger.info("Downloading band data and resampling...")
         band_paths = self._download_raster_assets(
-            item, raster_assets, output_folder, resolution, resampling_method, mask=mask, raster_asset_target_dtypes=raster_asset_target_dtypes
+            item, raster_assets, output_folder, resolution, resampling_spec, mask=mask, raster_asset_target_dtypes=raster_asset_target_dtypes, target_crs=target_crs
         )
         band_names_ordered = raster_assets
 
@@ -427,7 +457,7 @@ class STACDownloader:
         )
 
         # Step 5: Combine bands into a vrt (or GTiff if requested)
-        if len(raster_assets) > 0:
+        if len(raster_assets) > 0 and build_vrt:
             self.logger.info(f"Combining bands into single file for tile {item.id}...")
             vrt_path = self._get_vrt_output_path(item, resolution, output_folder)
 
@@ -440,6 +470,9 @@ class STACDownloader:
                 raise e
         else:
             vrt_path = None
+
+        # Step 6: Write tile download completed
+        self._write_job_completed(item.id, resolution, output_folder)
 
         return vrt_path, file_asset_paths, band_paths, band_names_ordered
 
@@ -463,11 +496,12 @@ class STACDownloader:
         resolution: float,
         overwrite: bool,
     ):
+        """Reduces list of items to process to those that haven't been processed yet."""
         filtered_items = []
         n_already_downloaded = 0
         for item in items:
-            output_path = self._get_vrt_output_path(item, resolution, output_folder)
-            if not os.path.exists(output_path) or overwrite:
+            status_path = self._get_job_status_path(item.id, resolution, output_folder)
+            if not os.path.exists(status_path) or overwrite:
                 filtered_items.append(item)
             else:
                 n_already_downloaded += 1
@@ -485,17 +519,18 @@ class STACDownloader:
         output_folder: str,
         overwrite: bool,
         resolution: float,
-        resampling_method: ResamplingMethod,
+        resampling_spec: ResamplingMethod | Dict[str, ResamplingMethod],
         save_mask_as_band: bool = False,
         num_workers: int = 1,
-        raster_asset_target_dtypes: Dict[str, Any] = None
+        raster_asset_target_dtypes: Dict[str, Any] = None,
+        target_crs: str = None,
+        build_vrt: bool = True
     ):
-        # Filter items by checkig it output already exists
+        # Filter items by checking if output already exists
         if os.path.exists(output_folder):
-            if not overwrite:
-                items = self._check_for_existing_output(
-                    items, output_folder, resolution, overwrite
-                )
+            items = self._check_for_existing_output(
+                items, output_folder, resolution, overwrite
+            )
         else:
             os.makedirs(output_folder)
 
@@ -511,9 +546,11 @@ class STACDownloader:
                 "mask_assets": mask_assets,
                 "output_folder": output_folder,
                 "resolution": resolution,
-                "resampling_method": resampling_method,
+                "resampling_spec": resampling_spec,
                 "save_mask_as_band": save_mask_as_band,
-                "raster_asset_target_dtypes": raster_asset_target_dtypes
+                "raster_asset_target_dtypes": raster_asset_target_dtypes,
+                "target_crs": target_crs,
+                "build_vrt": build_vrt
             }
             for item in items
         ]
