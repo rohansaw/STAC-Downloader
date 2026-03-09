@@ -124,8 +124,8 @@ class STACDownloader:
         items = search.item_collection()
         return items
 
+    @staticmethod
     def _get_file_output_path(
-        self,
         item: pyStacItem,
         asset_name: str,
         resolution: float,
@@ -146,8 +146,9 @@ class STACDownloader:
                     raise ValueError(f"Asset '{file_asset}' not found in item.")
 
                 file_url = item.assets[file_asset].href
-                ext = os.path.splitext(file_url)[-1].lstrip(".")
-                ext = ext.split('?')[0] # Removing signing key
+                file_url_wo_signup = file_url.split('?')[0] # Removing signing key
+                ext = os.path.splitext(file_url_wo_signup)[-1].lstrip(".")
+                
                 file_out_path = self._get_file_output_path(
                     item, file_asset, None, output_folder, extension=ext
                 )
