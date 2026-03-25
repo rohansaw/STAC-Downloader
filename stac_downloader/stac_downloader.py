@@ -132,9 +132,35 @@ class STACDownloader:
         output_folder: str,
         extension: str = "tif",
     ):
-        f_name = f"{item.id}_{asset_name}{'_' + str(resolution) + 'm' if resolution is not None else ''}.{extension}"
+        res_suffix = '_' + str(resolution) + 'm' if resolution is not None else ''
+        ext_suffix = f".{extension}" if extension else ''
+        f_name = f"{item.id}_{asset_name}{res_suffix}{ext_suffix}"
         out_path = os.path.join(output_folder, f_name)
         return out_path
+
+    @staticmethod
+    def _ext_from_media_type(media_type: str | None) -> str:
+        """Derive a file extension from a STAC asset media type string."""
+        if not media_type:
+            return ''
+        media_type_map = {
+            'application/xml': 'xml',
+            'text/xml': 'xml',
+            'application/json': 'json',
+            'application/geo+json': 'geojson',
+            'text/plain': 'txt',
+            'application/geopackage+sqlite3': 'gpkg',
+            'application/x-parquet': 'parquet',
+            'image/tiff': 'tif',
+            'image/tiff; application=geotiff': 'tif',
+            'image/tiff; application=geotiff; profile=cloud-optimized': 'tif',
+            'image/png': 'png',
+            'image/jpeg': 'jpg',
+            'application/pdf': 'pdf',
+            'text/html': 'html',
+            'application/schema+json': 'json',
+        }
+        return media_type_map.get(media_type, '')
 
     def _download_file_assets(
         self, item: pyStacItem, file_assets: List[str], output_folder: str
@@ -146,51 +172,23 @@ class STACDownloader:
                     raise ValueError(f"Asset '{file_asset}' not found in item.")
 
                 file_url = item.assets[file_asset].href
-                # Extract extension from URL, handling query parameters
+                # Strip query params (e.g. signing keys) BEFORE extracting extension.
+                # os.path.splitext on the raw URL would pick up dots inside query
+                # params (e.g. ?sig=abc.def) and return a wrong extension.
                 ext = os.path.splitext(file_url.split('?')[0])[-1].lstrip(".")
                 
-                # If no extension found in URL, try to infer from media_type or asset name
+                # Fallback: infer extension from the asset's media type
                 if not ext:
                     asset = item.assets[file_asset]
-                    media_type = getattr(asset, 'media_type', None) or getattr(asset, 'type', None)
-                    
-                    if media_type:
-                        # Common media type to extension mappings
-                        media_type_map = {
-                            'application/xml': 'xml',
-                            'text/xml': 'xml',
-                            'application/json': 'json',
-                            'application/geo+json': 'geojson',
-                            'text/plain': 'txt',
-                            'application/geopackage+sqlite3': 'gpkg',
-                            'application/x-parquet': 'parquet',
-                            'image/tiff': 'tif',
-                            'image/tiff; application=geotiff': 'tif',
-                            'image/tiff; application=geotiff; profile=cloud-optimized': 'tif',
-                            'image/png': 'png',
-                            'image/jpeg': 'jpg',
-                            'application/pdf': 'pdf',
-                            'text/html': 'html',
-                            'application/schema+json': 'json',
-                        }
-                        ext = media_type_map.get(media_type, '')
-                    
-                    # Fallback: infer from common asset names that we work with
-                    if not ext:
-                        if 'metadata' in file_asset.lower() or 'manifest' in file_asset.lower():
-                            ext = 'xml'
-                        elif 'json' in file_asset.lower():
-                            ext = 'json'
-                        elif 'thumbnail' in file_asset.lower() or 'preview' in file_asset.lower():
-                            ext = 'png'
+                    ext = self._ext_from_media_type(
+                        getattr(asset, 'media_type', None) or getattr(asset, 'type', None)
+                    )
                 
-                # Final fallback to avoid empty extensions
                 if not ext:
                     self.logger.warning(
-                        f"Could not determine extension for asset '{file_asset}' with URL: {file_url}. "
-                        f"Using 'dat' as default extension."
+                        f"Could not determine file extension for asset '{file_asset}' "
+                        f"(URL: {file_url}). Saving without extension."
                     )
-                    ext = 'dat'
                 
                 file_out_path = self._get_file_output_path(
                     item, file_asset, None, output_folder, extension=ext
