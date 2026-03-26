@@ -1,1 +1,2 @@
 import stac_downloader
+from stac_downloader.stac_downloader import DownloadBatchError

@@ -1,4 +1,5 @@
 from collections import defaultdict
+from dataclasses import dataclass
 import multiprocessing
 import os
 from pathlib import Path
@@ -21,6 +22,24 @@ from stac_downloader.raster_processing import (
     save_band,
 )
 from stac_downloader.utils import get_logger, run_subprocess
+
+
+@dataclass
+class _DownloadError:
+    """Sentinel object returned by _execution_wrapper when an item fails."""
+    item_id: str
+    error: Exception
+
+
+class DownloadBatchError(Exception):
+    """Raised when one or more items fail during a batch download."""
+    def __init__(self, errors: List[_DownloadError], total: int):
+        self.errors = errors
+        failed_ids = [e.item_id for e in errors]
+        super().__init__(
+            f"{len(errors)}/{total} items failed to download. "
+            f"Failed item IDs: {failed_ids}"
+        )
 
 
 class STACDownloader:
@@ -518,7 +537,8 @@ class STACDownloader:
 
         return vrt_path, file_asset_paths, band_paths, band_names_ordered
 
-    def _execution_wrapper(self, kwargs_dict):
+    def _execution_wrapper(self, args_tuple):
+        kwargs_dict, continue_on_error = args_tuple
         try:
             return self.download_item(**kwargs_dict)
         except KeyboardInterrupt:
@@ -529,6 +549,9 @@ class STACDownloader:
                 if kwargs_dict.get("item") and hasattr(kwargs_dict.get("item"), "id")
                 else "unknown"
             )
+            if continue_on_error:
+                self.logger.error(f"Failed to download item {item_id}: {e}")
+                return _DownloadError(item_id=item_id, error=e)
             raise type(e)(f"Error processing item {item_id}: {str(e)}") from e
 
     def _check_for_existing_output(
@@ -566,7 +589,9 @@ class STACDownloader:
         num_workers: int = 1,
         raster_asset_target_dtypes: Dict[str, Any] = None,
         target_crs: str = None,
-        build_vrt: bool = True
+        build_vrt: bool = True,
+        continue_on_error: bool = True,
+        max_retries: int = 3,
     ):
         # Filter items by checking if output already exists
         if os.path.exists(output_folder):
@@ -580,44 +605,102 @@ class STACDownloader:
             self.logger.info('All items already downloaded. Exiting.')
             return
 
-        job_args = [
-            {
-                "item": item,
-                "raster_assets": raster_assets,
-                "file_assets": file_assets,
-                "mask_assets": mask_assets,
-                "output_folder": output_folder,
-                "resolution": resolution,
-                "resampling_spec": resampling_spec,
-                "save_mask_as_band": save_mask_as_band,
-                "raster_asset_target_dtypes": raster_asset_target_dtypes,
-                "target_crs": target_crs,
-                "build_vrt": build_vrt
-            }
-            for item in items
-        ]
+        total_items = len(items)
+
+        def _make_job_args(item_list):
+            return [
+                (
+                    {
+                        "item": item,
+                        "raster_assets": raster_assets,
+                        "file_assets": file_assets,
+                        "mask_assets": mask_assets,
+                        "output_folder": output_folder,
+                        "resolution": resolution,
+                        "resampling_spec": resampling_spec,
+                        "save_mask_as_band": save_mask_as_band,
+                        "raster_asset_target_dtypes": raster_asset_target_dtypes,
+                        "target_crs": target_crs,
+                        "build_vrt": build_vrt,
+                    },
+                    continue_on_error,
+                )
+                for item in item_list
+            ]
 
         self.logger.info(f"Using {num_workers} workers out of {multiprocessing.cpu_count()} available cores")
 
         outputs = []
-        with multiprocessing.Pool(processes=num_workers) as pool:
-            try:
-                results_iter = pool.imap_unordered(self._execution_wrapper, job_args)
+        all_errors = []
+        remaining_items = items
 
-                with tqdm(total=len(job_args), desc="Processing items") as pbar:
-                    for result in results_iter:
-                        outputs.append(result)
-                        pbar.update(1)
+        for attempt in range(1, max_retries + 1):
+            job_args = _make_job_args(remaining_items)
 
-            except KeyboardInterrupt:
-                self.logger.error("\nInterrupted by user. Terminating workers...")
-                pool.terminate()
-                pool.join()
-                raise KeyboardInterrupt("Download interrupted by user.")
-            except Exception as e:
-                self.logger.error(f"\nError in worker process: {e}")
-                pool.close()
-                pool.join()
-                raise e
+            if attempt > 1:
+                self.logger.info(
+                    f"Retry attempt {attempt}/{max_retries}: "
+                    f"{len(remaining_items)} items to retry (with fresh tokens)."
+                )
+
+            round_errors = []
+
+            with multiprocessing.Pool(processes=num_workers) as pool:
+                try:
+                    results_iter = pool.imap_unordered(self._execution_wrapper, job_args)
+
+                    desc = "Processing items" if attempt == 1 else f"Retry {attempt}/{max_retries}"
+                    with tqdm(total=len(job_args), desc=desc) as pbar:
+                        for result in results_iter:
+                            if isinstance(result, _DownloadError):
+                                round_errors.append(result)
+                            else:
+                                outputs.append(result)
+                            pbar.update(1)
+
+                except KeyboardInterrupt:
+                    self.logger.error("\nInterrupted by user. Terminating workers...")
+                    pool.terminate()
+                    pool.join()
+                    raise KeyboardInterrupt("Download interrupted by user.")
+                except Exception as e:
+                    if not continue_on_error:
+                        self.logger.error(f"\nError in worker process: {e}")
+                        pool.close()
+                        pool.join()
+                        raise e
+                    # If continue_on_error but pool itself failed, treat all
+                    # remaining items as failed for this round.
+                    self.logger.error(f"\nPool error on attempt {attempt}: {e}")
+                    pool.terminate()
+                    pool.join()
+                    round_errors = [
+                        _DownloadError(item_id=getattr(item, "id", "unknown"), error=e)
+                        for item in remaining_items
+                    ]
+
+            if not round_errors:
+                break
+
+            self.logger.warning(
+                f"Attempt {attempt}/{max_retries}: "
+                f"{len(round_errors)}/{len(remaining_items)} items failed."
+            )
+
+            if attempt < max_retries:
+                # Build a lookup of failed item IDs to retry with fresh tokens
+                failed_ids = {e.item_id for e in round_errors}
+                remaining_items = [
+                    item for item in remaining_items if item.id in failed_ids
+                ]
+            else:
+                all_errors.extend(round_errors)
+
+        if all_errors:
+            self.logger.error(
+                f"{len(all_errors)}/{total_items} items failed after "
+                f"{max_retries} attempts."
+            )
+            raise DownloadBatchError(all_errors, total_items)
 
         return outputs
