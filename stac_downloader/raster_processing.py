@@ -27,9 +27,18 @@ class ResamplingMethod(Enum):
 
 
 def resample_raster(
-    raster_path: str, target_resolution: float, resampling_method: ResamplingMethod, target_crs: str = None
+    raster_path: str, target_resolution: float, resampling_method: ResamplingMethod, target_crs: str = None,
+    src_crs_fallback: str = None, src_transform_fallback=None
 ):
-    """Resample/Reproject a raster (disk/remote path) in memory."""
+    """Resample/Reproject a raster (disk/remote path) in memory.
+
+    Some providers (e.g. recently-processed Sentinel-2 granules on Planetary
+    Computer) occasionally publish assets whose files lack an embedded CRS and
+    GCPs even though the STAC metadata still carries the projection. Callers can
+    pass ``src_crs_fallback`` (e.g. "EPSG:32634") and ``src_transform_fallback``
+    (a rasterio Affine, or a 6-element list as found in ``proj:transform``) to
+    georeference such assets instead of failing the entire download.
+    """
 
     with rio.open(raster_path) as src:
         if src.count > 1:
@@ -49,13 +58,28 @@ def resample_raster(
             src_crs = src.crs
             src_transform = src.transform
         else:
-            # Fallback: use GCPs
+            # Fallback 1: use GCPs embedded in the file
             gcps, gcp_crs = src.gcps
-            if not gcps:
+            if gcps:
+                src_crs = gcp_crs
+                src_transform = from_gcps(gcps)
+            elif src_crs_fallback is not None and src_transform_fallback is not None:
+                # Fallback 2: georeference from STAC proj metadata supplied by the caller
+                src_crs = (
+                    rio.crs.CRS.from_string(src_crs_fallback)
+                    if isinstance(src_crs_fallback, str)
+                    else src_crs_fallback
+                )
+                src_transform = (
+                    src_transform_fallback
+                    if isinstance(src_transform_fallback, rio.Affine)
+                    else rio.Affine(*list(src_transform_fallback)[:6])
+                )
+                src_resolution = (abs(src_transform.a), abs(src_transform.e))
+            else:
                 raise ValueError("Raster has neither CRS nor GCPs — cannot georeference.")
-            src_crs = gcp_crs
-            src_transform = from_gcps(gcps)
             profile['crs'] = src_crs
+            profile['transform'] = src_transform
         
         src_bounds = rio.transform.array_bounds(src_height, src_width, src_transform)
 

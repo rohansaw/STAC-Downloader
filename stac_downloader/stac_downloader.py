@@ -9,7 +9,9 @@ import numpy as np
 from pystac.item import Item as pyStacItem
 from pystac_client import Client as pyStacClient
 from rasterio import Env
-from tenacity import retry, stop_after_attempt, wait_exponential
+import pickle
+
+from tenacity import RetryError, retry, stop_after_attempt, wait_exponential
 from tqdm import tqdm
 
 from stac_downloader.downloading import download_file
@@ -270,8 +272,10 @@ class STACDownloader:
                         f"Fetching raster asset '{raster_asset}' from {raster_url} and resampling ..."
                     )
                     resampling_method = self._get_band_resampling_method(resampling_spec, raster_asset)
+                    crs_fallback, transform_fallback = self._get_proj_fallback(item, raster_asset)
                     resampled_raster, resampled_profile = resample_raster(
-                        raster_path=raster_url, target_resolution=resolution, resampling_method=resampling_method, target_crs=target_crs
+                        raster_path=raster_url, target_resolution=resolution, resampling_method=resampling_method, target_crs=target_crs,
+                        src_crs_fallback=crs_fallback, src_transform_fallback=transform_fallback
                     )
 
                     processed_raster, processed_profile = self._process_band(resampled_raster, resampled_profile, item, raster_asset)
@@ -339,6 +343,45 @@ class STACDownloader:
 
         return raster_out_path
 
+    @staticmethod
+    def _get_proj_fallback(item: pyStacItem, asset_name: str):
+        """Return ``(crs_str, transform_list)`` from STAC ``proj`` metadata.
+
+        Used to georeference assets whose files were published without an
+        embedded CRS (seen on some recent Sentinel-2 granules). Prefers
+        asset-level projection metadata, falling back to item-level. Returns
+        ``(None, None)`` when projection metadata is unavailable, in which case
+        ``resample_raster`` keeps its original behaviour.
+        """
+        try:
+            assets = getattr(item, "assets", None) or {}
+            asset = assets.get(asset_name) if hasattr(assets, "get") else None
+            asset_fields = getattr(asset, "extra_fields", None) or {}
+            item_props = getattr(item, "properties", None) or {}
+            if not isinstance(asset_fields, dict) or not isinstance(item_props, dict):
+                return None, None
+
+            crs = None
+            for fields in (asset_fields, item_props):
+                code = fields.get("proj:code")
+                if code is None:
+                    epsg = fields.get("proj:epsg")
+                    code = f"EPSG:{epsg}" if epsg is not None else None
+                elif isinstance(code, int) or (isinstance(code, str) and code.isdigit()):
+                    code = f"EPSG:{code}"
+                if code is not None:
+                    crs = code
+                    break
+
+            transform = asset_fields.get("proj:transform") or item_props.get("proj:transform")
+
+            if crs is None or not isinstance(transform, (list, tuple)) or len(transform) < 6:
+                return None, None
+            return crs, transform
+        except Exception:
+            # Projection fallback is best-effort; never let it break a download.
+            return None, None
+
     def _create_mask_from_assets(
         self,
         item: pyStacItem,
@@ -369,8 +412,10 @@ class STACDownloader:
 
                 # Resample the mask to the target resolution
                 resampling_method = self._get_band_resampling_method(resampling_spec, mask_asset)
+                crs_fallback, transform_fallback = self._get_proj_fallback(item, mask_asset)
                 resampled_mask, resampled_mask_profile = resample_raster(
-                    raster_path=mask_url, target_resolution=resolution, resampling_method=resampling_method, target_crs=target_crs
+                    raster_path=mask_url, target_resolution=resolution, resampling_method=resampling_method, target_crs=target_crs,
+                    src_crs_fallback=crs_fallback, src_transform_fallback=transform_fallback
                 )
 
                 downloaded_maskbands[mask_asset] = (
@@ -537,6 +582,30 @@ class STACDownloader:
 
         return vrt_path, file_asset_paths, band_paths, band_names_ordered
 
+    @staticmethod
+    def _to_picklable_error(e: Exception) -> Exception:
+        """Return a picklable representation of ``e``.
+
+        Worker results travel back to the parent through ``multiprocessing``,
+        which pickles them. A tenacity ``RetryError`` wraps a ``Future`` holding
+        a ``_thread.RLock`` and is therefore unpicklable; returning it would
+        abort the whole pool (defeating ``continue_on_error``). We unwrap to the
+        underlying cause and, if that is still unpicklable, fall back to a plain
+        ``RuntimeError`` carrying the message.
+        """
+        if isinstance(e, RetryError) and getattr(e, "last_attempt", None) is not None:
+            try:
+                cause = e.last_attempt.exception()
+            except Exception:
+                cause = None
+            if cause is not None:
+                e = cause
+        try:
+            pickle.dumps(e)
+            return e
+        except Exception:
+            return RuntimeError(f"{type(e).__name__}: {e}")
+
     def _execution_wrapper(self, args_tuple):
         kwargs_dict, continue_on_error = args_tuple
         try:
@@ -549,10 +618,11 @@ class STACDownloader:
                 if kwargs_dict.get("item") and hasattr(kwargs_dict.get("item"), "id")
                 else "unknown"
             )
+            err = self._to_picklable_error(e)
             if continue_on_error:
-                self.logger.error(f"Failed to download item {item_id}: {e}")
-                return _DownloadError(item_id=item_id, error=e)
-            raise type(e)(f"Error processing item {item_id}: {str(e)}") from e
+                self.logger.error(f"Failed to download item {item_id}: {err}")
+                return _DownloadError(item_id=item_id, error=err)
+            raise RuntimeError(f"Error processing item {item_id}: {err}") from err
 
     def _check_for_existing_output(
         self,
